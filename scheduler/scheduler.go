@@ -1,3 +1,7 @@
+// Package scheduler wraps gocron with a reconciler loop. The reconciler polls
+// the shared job store and converges this instance's local gocron scheduler
+// (add / update / remove) so all instances track the same job set. Only the
+// leader instance actually executes jobs (gated by the Elector).
 package scheduler
 
 import (
@@ -9,21 +13,18 @@ import (
 	"github.com/go-co-op/gocron/v2"
 	"github.com/google/uuid"
 
-	"crondemo/internal/elector"
-	"crondemo/internal/executor"
-	"crondemo/internal/jobstore"
+	"github.com/foreveryouyou/gcron/elector"
+	"github.com/foreveryouyou/gcron/executor"
+	"github.com/foreveryouyou/gcron/jobstore"
 )
 
 type localEntry struct {
-	uid        uuid.UUID
-	schedule   string
+	uid         uuid.UUID
+	schedule    string
 	withSeconds bool
 }
 
-// Scheduler wraps a gocron scheduler plus a reconciler loop. The reconciler
-// polls the shared job store and converges this instance's local gocron
-// scheduler (add / update / remove) so all instances track the same job set.
-// Only the leader instance actually executes jobs (gated by the Elector).
+// Scheduler wraps a gocron scheduler plus a reconciler loop.
 type Scheduler struct {
 	gocron   gocron.Scheduler
 	store    *jobstore.Store
@@ -37,6 +38,8 @@ type Scheduler struct {
 	wg     sync.WaitGroup
 }
 
+// New constructs a Scheduler. interval controls how often the reconciler polls
+// the store; pass <=0 for the 5s default.
 func New(store *jobstore.Store, exec *executor.Executor, e *elector.RedisElector, interval time.Duration) (*Scheduler, error) {
 	g, err := gocron.NewScheduler(gocron.WithDistributedElector(e))
 	if err != nil {

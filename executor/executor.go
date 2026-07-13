@@ -1,3 +1,5 @@
+// Package executor runs scheduled jobs. A job is either a Go function
+// (registered via a FuncRegistry) or an outbound HTTP request.
 package executor
 
 import (
@@ -8,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"crondemo/internal/jobstore"
+	"github.com/foreveryouyou/gcron/jobstore"
 )
 
 // JobFunc is a registered Go-function task.
@@ -24,6 +26,7 @@ type Executor struct {
 	client *http.Client
 }
 
+// New constructs an Executor bound to a job store and a set of registered funcs.
 func New(store *jobstore.Store, instID string, funcs FuncRegistry) *Executor {
 	return &Executor{
 		store:  store,
@@ -31,6 +34,13 @@ func New(store *jobstore.Store, instID string, funcs FuncRegistry) *Executor {
 		instID: instID,
 		client: &http.Client{Timeout: 10 * time.Second},
 	}
+}
+
+// RegisterFunc registers (or replaces) a Go function task by name. It is safe
+// to call before Start; jobs referencing this name are picked up by the
+// reconciler on the next pass.
+func (e *Executor) RegisterFunc(name string, fn JobFunc) {
+	e.funcs[name] = fn
 }
 
 // Run is the task body bound to every job. It is invoked by gocron only on the

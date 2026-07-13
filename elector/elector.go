@@ -1,3 +1,5 @@
+// Package elector implements a Redis-based leader election used to make a
+// gocron cluster run jobs on exactly one instance at a time.
 package elector
 
 import (
@@ -29,6 +31,8 @@ type RedisElector struct {
 	once   sync.Once
 }
 
+// New constructs a RedisElector and starts its campaign loop. ttl is the lock
+// lifetime; pass <=0 for the default of 10s.
 func New(client *redis.Client, key, id string, ttl time.Duration) *RedisElector {
 	if ttl <= 0 {
 		ttl = 10 * time.Second

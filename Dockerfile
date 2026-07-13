@@ -1,9 +1,9 @@
-FROM golang:1.22 AS build
+FROM golang:1.24 AS build
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . .
-RUN go mod tidy
-RUN CGO_ENABLED=0 GOOS=linux go build -o /out/server ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -o /out/server ./examples/server
 
 FROM gcr.io/distroless/static-debian12
 COPY --from=build /out/server /server

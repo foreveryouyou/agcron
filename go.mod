@@ -1,4 +1,4 @@
-module crondemo
+module github.com/foreveryouyou/gcron
 
 go 1.24
 

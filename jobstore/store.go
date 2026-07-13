@@ -1,3 +1,6 @@
+// Package jobstore is a Redis-backed, cluster-wide store of scheduled job
+// definitions. Every instance in a cluster reads from the same Redis hash, so
+// a single write (add/update/delete) converges the whole cluster.
 package jobstore
 
 import (
@@ -26,20 +29,21 @@ type HTTPConfig struct {
 // JobDef is the shared, cluster-wide definition of a scheduled job.
 // It lives in Redis (one hash) so every instance converges to the same set.
 type JobDef struct {
-	ID         string     `json:"id"`
-	Name       string     `json:"name"`
-	Type       JobType    `json:"type"` // "func" or "http"
-	Schedule   string     `json:"schedule"`
-	WithSeconds bool      `json:"with_seconds"` // true => 6-field cron (with seconds)
-	Enabled    bool       `json:"enabled"`
-	Func       string     `json:"func,omitempty"` // used when Type == "func"
-	HTTP       HTTPConfig `json:"http,omitempty"` // used when Type == "http"
+	ID          string      `json:"id"`
+	Name        string      `json:"name"`
+	Type        JobType     `json:"type"` // "func" or "http"
+	Schedule    string      `json:"schedule"`
+	WithSeconds bool        `json:"with_seconds"` // true => 6-field cron (with seconds)
+	Enabled     bool        `json:"enabled"`
+	Func        string      `json:"func,omitempty"` // used when Type == "func"
+	HTTP        HTTPConfig `json:"http,omitempty"` // used when Type == "http"
 }
 
 type Store struct {
 	client *redis.Client
 }
 
+// New constructs a Store backed by the given Redis client.
 func New(client *redis.Client) *Store {
 	return &Store{client: client}
 }

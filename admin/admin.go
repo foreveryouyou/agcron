@@ -1,3 +1,7 @@
+// Package admin exposes a tiny HTTP control surface so you can modify jobs at
+// runtime and watch leadership. Changes are written to the shared store; the
+// reconciler on every instance picks them up, so a single write converges the
+// cluster.
 package admin
 
 import (
@@ -7,9 +11,9 @@ import (
 	"net/http"
 	"strings"
 
-	"crondemo/internal/elector"
-	"crondemo/internal/jobstore"
-	"crondemo/internal/scheduler"
+	"github.com/foreveryouyou/gcron/elector"
+	"github.com/foreveryouyou/gcron/jobstore"
+	"github.com/foreveryouyou/gcron/scheduler"
 )
 
 // API exposes a tiny control surface so you can modify jobs at runtime and
