@@ -1,0 +1,38 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  cron-a:
+    build: .
+    environment:
+      INSTANCE_ID: cron-a
+      REDIS_ADDR: redis:6379
+      ELECTOR_KEY: cron:leader
+    depends_on:
+      - redis
+    ports:
+      - "8081:8080"
+
+  cron-b:
+    build: .
+    environment:
+      INSTANCE_ID: cron-b
+      REDIS_ADDR: redis:6379
+      ELECTOR_KEY: cron:leader
+    depends_on:
+      - redis
+    ports:
+      - "8082:8080"
+
+  cron-c:
+    build: .
+    environment:
+      INSTANCE_ID: cron-c
+      REDIS_ADDR: redis:6379
+      ELECTOR_KEY: cron:leader
+    depends_on:
+      - redis
+    ports:
+      - "8083:8080"
