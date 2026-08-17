@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -46,6 +47,7 @@ type Config struct {
 	Seed       []jobstore.JobDef     // seeded only when the store is empty
 	AdminAddr  string                // if non-empty, serves the admin HTTP API here
 	Logger     logx.Logger           // optional custom logger; nil uses logx.Default
+	KeyPrefix  string                // Redis key prefix; defaults to "cron", avoids collisions when sharing one Redis DB
 }
 
 // Engine ties together the store, executor, elector and scheduler.
@@ -66,8 +68,16 @@ func New(ctx context.Context, cfg Config) (*Engine, error) {
 	if cfg.InstanceID == "" {
 		cfg.InstanceID, _ = os.Hostname()
 	}
+	// All Redis keys share a fixed "agcron" segment in the middle so a custom
+	// KeyPrefix is simply prepended, e.g. "my:" -> "my:agcron:jobs".
+	// An empty KeyPrefix yields the bare "agcron:*" keys. A non-empty
+	// KeyPrefix is normalized to end with ":" so users may pass "my" or "my:".
+	if cfg.KeyPrefix != "" && !strings.HasSuffix(cfg.KeyPrefix, ":") {
+		cfg.KeyPrefix += ":"
+	}
+	prefix := cfg.KeyPrefix + "agcron"
 	if cfg.ElectorKey == "" {
-		cfg.ElectorKey = "cron:leader"
+		cfg.ElectorKey = prefix + ":leader"
 	}
 	lg := logx.With(cfg.Logger)
 
@@ -78,7 +88,7 @@ func New(ctx context.Context, cfg Config) (*Engine, error) {
 
 	store := cfg.Store
 	if store == nil {
-		store = jobstore.New(rdb) // default: Redis-backed store
+		store = jobstore.NewWithPrefix(rdb, prefix) // default: Redis-backed store, namespaced by KeyPrefix
 	}
 	exec := executor.New(store, cfg.InstanceID, cfg.Funcs, lg)
 	e := elector.New(rdb, cfg.ElectorKey, cfg.InstanceID, cfg.ElectorTTL, lg)

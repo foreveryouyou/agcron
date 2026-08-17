@@ -101,7 +101,7 @@ func main() {
 | `RedisAddr`  | Redis 地址，如 `localhost:6379`                              |
 | `RedisPass`  | Redis 密码，可为空                                           |
 | `InstanceID` | 进程唯一标识，默认取主机名                                   |
-| `ElectorKey` | 领导者选举使用的 Redis key，默认 `cron:leader`               |
+| `ElectorKey` | 领导者选举使用的 Redis key，默认 `{KeyPrefix}:leader`        |
 | `ElectorTTL` | 领导者锁 TTL，`<=0` 表示 10s                                 |
 | `Reconcile`  | reconciler 轮询间隔，`<=0` 表示 5s                           |
 | `Store`      | 任务存储，默认使用 Redis 实现；可传入自定义 `jobstore.Store` |
@@ -109,6 +109,7 @@ func main() {
 | `Seed`       | 仅当存储为空时写入的初始化任务                               |
 | `AdminAddr`  | 非空时在该地址启动 Admin HTTP 服务                           |
 | `Logger`     | 可选，自定义 `logx.Logger`；为 `nil` 时使用内置默认 logger    |
+| `KeyPrefix`  | 拼在固定层 `agcron` 之前的前缀（如 `"my:"` → `my:agcron:jobs`）；为空则直接用 `agcron:*`，多系统共用 Redis DB 时设不同值避免冲突 |
 
 ### Engine 主要方法
 

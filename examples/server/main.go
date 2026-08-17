@@ -27,7 +27,7 @@ func main() {
 		RedisAddr:  envOr("REDIS_ADDR", "localhost:6379"),
 		RedisPass:  envOr("REDIS_PASS", "redis_JPtEYa"),
 		InstanceID: instID,
-		ElectorKey: envOr("ELECTOR_KEY", "cron:leader"),
+		KeyPrefix:  envOr("KEY_PREFIX", ""), // namespaces all Redis keys; share one Redis DB safely
 		ElectorTTL: 10 * time.Second,
 		Reconcile:  5 * time.Second,
 		AdminAddr:  ":8080",

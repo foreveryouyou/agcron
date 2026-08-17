@@ -54,7 +54,7 @@ func main() {
 		RedisAddr:  envOr("REDIS_ADDR", "localhost:6379"),
 		RedisPass:  envOr("REDIS_PASS", ""),
 		InstanceID: instID,
-		ElectorKey: envOr("ELECTOR_KEY", "cron:leader"),
+		KeyPrefix:  envOr("KEY_PREFIX", ""), // namespaces all Redis keys; share one Redis DB safely
 		ElectorTTL: 10 * time.Second,
 		Reconcile:  5 * time.Second,
 		Store:      store, // custom store replaces the default Redis store

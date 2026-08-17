@@ -55,9 +55,6 @@ type ExecutionRecord struct {
 	HTTPBody   string    `json:"http_body,omitempty"`   // HTTP response body (truncated)
 }
 
-const jobsKey = "cron:jobs"
-const execKey = "cron:executions" // last ExecutionRecord per job, keyed by jobID
-
 type JobType string
 
 const (
@@ -88,18 +85,36 @@ type JobDef struct {
 // Job definitions are kept in a single hash.
 type RedisStore struct {
 	client *redis.Client
+	prefix string // Redis key prefix to avoid collisions across systems
 }
 
-// New constructs a RedisStore backed by the given Redis client.
+// New constructs a RedisStore backed by the given Redis client. The default
+// key prefix "agcron" is used (keys look like "agcron:jobs").
 func New(client *redis.Client) *RedisStore {
-	return &RedisStore{client: client}
+	return NewWithPrefix(client, "agcron")
 }
+
+// NewWithPrefix is like New but lets you namespace all Redis keys under prefix
+// (e.g. "myapp") so multiple systems can share one Redis DB without clashes.
+// An empty prefix falls back to "cron".
+func NewWithPrefix(client *redis.Client, prefix string) *RedisStore {
+	if prefix == "" {
+		prefix = "cron"
+	}
+	return &RedisStore{client: client, prefix: prefix}
+}
+
+// jobsKey returns the hash key for job definitions under this store's prefix.
+func (s *RedisStore) jobsKey() string { return s.prefix + ":jobs" }
+
+// execKey returns the hash key for last executions under this store's prefix.
+func (s *RedisStore) execKey() string { return s.prefix + ":executions" }
 
 // Ensure RedisStore satisfies the Store interface at compile time.
 var _ Store = (*RedisStore)(nil)
 
 func (s *RedisStore) List(ctx context.Context) (map[string]JobDef, error) {
-	res, err := s.client.HGetAll(ctx, jobsKey).Result()
+	res, err := s.client.HGetAll(ctx, s.jobsKey()).Result()
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +130,7 @@ func (s *RedisStore) List(ctx context.Context) (map[string]JobDef, error) {
 }
 
 func (s *RedisStore) Get(ctx context.Context, id string) (JobDef, bool, error) {
-	raw, err := s.client.HGet(ctx, jobsKey, id).Result()
+	raw, err := s.client.HGet(ctx, s.jobsKey(), id).Result()
 	if errors.Is(err, redis.Nil) {
 		return JobDef{}, false, nil
 	}
@@ -134,11 +149,11 @@ func (s *RedisStore) Put(ctx context.Context, d JobDef) error {
 	if err != nil {
 		return err
 	}
-	return s.client.HSet(ctx, jobsKey, d.ID, raw).Err()
+	return s.client.HSet(ctx, s.jobsKey(), d.ID, raw).Err()
 }
 
 func (s *RedisStore) Delete(ctx context.Context, id string) error {
-	return s.client.HDel(ctx, jobsKey, id).Err()
+	return s.client.HDel(ctx, s.jobsKey(), id).Err()
 }
 
 func (s *RedisStore) OnExecuted(ctx context.Context, rec ExecutionRecord) error {
@@ -146,11 +161,11 @@ func (s *RedisStore) OnExecuted(ctx context.Context, rec ExecutionRecord) error 
 	if err != nil {
 		return err
 	}
-	return s.client.HSet(ctx, execKey, rec.JobID, raw).Err()
+	return s.client.HSet(ctx, s.execKey(), rec.JobID, raw).Err()
 }
 
 func (s *RedisStore) LastExecution(ctx context.Context, jobID string) (ExecutionRecord, bool, error) {
-	raw, err := s.client.HGet(ctx, execKey, jobID).Result()
+	raw, err := s.client.HGet(ctx, s.execKey(), jobID).Result()
 	if errors.Is(err, redis.Nil) {
 		return ExecutionRecord{}, false, nil
 	}

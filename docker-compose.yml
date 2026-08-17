@@ -9,7 +9,7 @@ services:
     environment:
       INSTANCE_ID: cron-a
       REDIS_ADDR: redis:6379
-      ELECTOR_KEY: cron:leader
+      KEY_PREFIX: cron
     depends_on:
       - redis
     ports:
@@ -20,7 +20,7 @@ services:
     environment:
       INSTANCE_ID: cron-b
       REDIS_ADDR: redis:6379
-      ELECTOR_KEY: cron:leader
+      KEY_PREFIX: cron
     depends_on:
       - redis
     ports:
@@ -31,7 +31,7 @@ services:
     environment:
       INSTANCE_ID: cron-c
       REDIS_ADDR: redis:6379
-      ELECTOR_KEY: cron:leader
+      KEY_PREFIX: cron
     depends_on:
       - redis
     ports:
