@@ -6,7 +6,6 @@ package scheduler
 
 import (
 	"context"
-	"log"
 	"sync"
 	"time"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/foreveryouyou/agcron/elector"
 	"github.com/foreveryouyou/agcron/executor"
 	"github.com/foreveryouyou/agcron/jobstore"
+	"github.com/foreveryouyou/agcron/logx"
 )
 
 type localEntry struct {
@@ -30,6 +30,7 @@ type Scheduler struct {
 	store    jobstore.Store
 	exec     *executor.Executor
 	interval time.Duration
+	log      logx.Logger
 
 	mu    sync.Mutex
 	local map[string]localEntry
@@ -39,8 +40,9 @@ type Scheduler struct {
 }
 
 // New constructs a Scheduler. interval controls how often the reconciler polls
-// the store; pass <=0 for the 5s default.
-func New(store jobstore.Store, exec *executor.Executor, e *elector.RedisElector, interval time.Duration) (*Scheduler, error) {
+// the store; pass <=0 for the 5s default. log is optional; a nil value uses the
+// logx.Default logger.
+func New(store jobstore.Store, exec *executor.Executor, e *elector.RedisElector, interval time.Duration, log logx.Logger) (*Scheduler, error) {
 	g, err := gocron.NewScheduler(gocron.WithDistributedElector(e))
 	if err != nil {
 		return nil, err
@@ -53,6 +55,7 @@ func New(store jobstore.Store, exec *executor.Executor, e *elector.RedisElector,
 		store:    store,
 		exec:     exec,
 		interval: interval,
+		log:      logx.With(log),
 		local:    make(map[string]localEntry),
 		stopCh:   make(chan struct{}),
 	}, nil
@@ -83,7 +86,7 @@ func (s *Scheduler) reconcile() {
 	ctx := context.Background()
 	defs, err := s.store.List(ctx)
 	if err != nil {
-		log.Printf("[reconcile] list error: %v", err)
+		s.log.Errorf("[reconcile] list error: %v", err)
 		return
 	}
 
@@ -98,7 +101,7 @@ func (s *Scheduler) reconcile() {
 		}
 		if entry.schedule != d.Schedule || entry.withSeconds != d.WithSeconds {
 			if err := s.gocron.RemoveJob(entry.uid); err != nil {
-				log.Printf("[reconcile] remove %s error: %v", id, err)
+				s.log.Errorf("[reconcile] remove %s error: %v", id, err)
 			}
 			delete(s.local, id)
 			s.add(id, d)
@@ -108,7 +111,7 @@ func (s *Scheduler) reconcile() {
 	for id, entry := range s.local {
 		if _, ok := defs[id]; !ok {
 			if err := s.gocron.RemoveJob(entry.uid); err != nil {
-				log.Printf("[reconcile] remove %s error: %v", id, err)
+				s.log.Errorf("[reconcile] remove %s error: %v", id, err)
 			}
 			delete(s.local, id)
 		}
@@ -126,11 +129,11 @@ func (s *Scheduler) add(id string, d jobstore.JobDef) {
 		gocron.WithTags(id),
 	)
 	if err != nil {
-		log.Printf("[reconcile] add job %s error: %v", id, err)
+		s.log.Errorf("[reconcile] add job %s error: %v", id, err)
 		return
 	}
 	s.local[id] = localEntry{uid: job.ID(), schedule: d.Schedule, withSeconds: d.WithSeconds}
-	log.Printf("[reconcile] added job %q (%s, seconds=%v) -> %s", d.Name, d.Schedule, d.WithSeconds, job.ID())
+	s.log.Infof("[reconcile] added job %q (%s, seconds=%v) -> %s", d.Name, d.Schedule, d.WithSeconds, job.ID())
 }
 
 func (s *Scheduler) Stop() {

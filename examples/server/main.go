@@ -42,6 +42,7 @@ func main() {
 			},
 		},
 		Seed: exampleJobs(),
+		// Logger: myCustomLogger, // optional; nil uses the built-in default logger
 	})
 	if err != nil {
 		log.Fatalf("start engine failed: %v", err)

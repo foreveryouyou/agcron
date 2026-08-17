@@ -57,7 +57,7 @@ type JobDef struct {
 	WithSeconds bool       `json:"with_seconds"` // true => 6-field cron (with seconds)
 	Enabled     bool       `json:"enabled"`
 	Func        string     `json:"func,omitempty"` // used when Type == "func"
-	HTTP        HTTPConfig `json:"http,omitempty"` // used when Type == "http"
+	HTTP        HTTPConfig `json:"http"`           // used when Type == "http"
 }
 
 // RedisStore is the default, Redis-backed implementation of Store.

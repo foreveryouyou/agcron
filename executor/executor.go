@@ -6,11 +6,11 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/foreveryouyou/agcron/jobstore"
+	"github.com/foreveryouyou/agcron/logx"
 )
 
 // JobFunc is a registered Go-function task.
@@ -24,15 +24,18 @@ type Executor struct {
 	funcs  FuncRegistry
 	instID string
 	client *http.Client
+	log    logx.Logger
 }
 
 // New constructs an Executor bound to a job store and a set of registered funcs.
-func New(store jobstore.Store, instID string, funcs FuncRegistry) *Executor {
+// log is optional; a nil value uses the logx.Default logger.
+func New(store jobstore.Store, instID string, funcs FuncRegistry, log logx.Logger) *Executor {
 	return &Executor{
 		store:  store,
 		funcs:  funcs,
 		instID: instID,
 		client: &http.Client{Timeout: 10 * time.Second},
+		log:    logx.With(log),
 	}
 }
 
@@ -49,33 +52,33 @@ func (e *Executor) RegisterFunc(name string, fn JobFunc) {
 func (e *Executor) Run(ctx context.Context, jobID string) {
 	d, ok, err := e.store.Get(ctx, jobID)
 	if err != nil {
-		log.Printf("[exec %s] get %s error: %v", e.instID, jobID, err)
+		e.log.Errorf("[exec %s] get %s error: %v", e.instID, jobID, err)
 		return
 	}
 	if !ok {
-		log.Printf("[exec %s] job %s no longer exists", e.instID, jobID)
+		e.log.Warnf("[exec %s] job %s no longer exists", e.instID, jobID)
 		return
 	}
 	if !d.Enabled {
-		log.Printf("[exec %s] job %q disabled, skip", e.instID, d.Name)
+		e.log.Infof("[exec %s] job %q disabled, skip", e.instID, d.Name)
 		return
 	}
 
-	log.Printf("[exec %s] >>> running job %q (type=%s)", e.instID, d.Name, d.Type)
+	e.log.Infof("[exec %s] >>> running job %q (type=%s)", e.instID, d.Name, d.Type)
 	switch d.Type {
 	case jobstore.JobTypeFunc:
 		fn, found := e.funcs[d.Func]
 		if !found {
-			log.Printf("[exec %s] func %q not registered", e.instID, d.Func)
+			e.log.Errorf("[exec %s] func %q not registered", e.instID, d.Func)
 			return
 		}
 		if err := fn(ctx, d); err != nil {
-			log.Printf("[exec %s] func %q error: %v", e.instID, d.Func, err)
+			e.log.Errorf("[exec %s] func %q error: %v", e.instID, d.Func, err)
 		}
 	case jobstore.JobTypeHTTP:
 		e.doHTTP(ctx, d)
 	default:
-		log.Printf("[exec %s] unknown job type %q", e.instID, d.Type)
+		e.log.Errorf("[exec %s] unknown job type %q", e.instID, d.Type)
 	}
 }
 
@@ -90,18 +93,18 @@ func (e *Executor) doHTTP(ctx context.Context, d jobstore.JobDef) {
 	}
 	req, err := http.NewRequestWithContext(ctx, method, d.HTTP.URL, body)
 	if err != nil {
-		log.Printf("[exec %s] http new request error: %v", e.instID, err)
+		e.log.Errorf("[exec %s] http new request error: %v", e.instID, err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := e.client.Do(req)
 	if err != nil {
-		log.Printf("[exec %s] http do error: %v", e.instID, err)
+		e.log.Errorf("[exec %s] http do error: %v", e.instID, err)
 		return
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
-	log.Printf("[exec %s] http %s -> %d %s", e.instID, d.HTTP.URL, resp.StatusCode, truncate(string(b)))
+	e.log.Infof("[exec %s] http %s -> %d %s", e.instID, d.HTTP.URL, resp.StatusCode, truncate(string(b)))
 }
 
 func truncate(s string) string {

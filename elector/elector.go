@@ -5,11 +5,12 @@ package elector
 import (
 	"context"
 	"errors"
-	"log"
 	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"github.com/foreveryouyou/agcron/logx"
 )
 
 var errNotLeader = errors.New("not leader")
@@ -22,6 +23,7 @@ type RedisElector struct {
 	key    string
 	id     string
 	ttl    time.Duration
+	log    logx.Logger
 
 	mu       sync.RWMutex
 	isLeader bool
@@ -32,8 +34,9 @@ type RedisElector struct {
 }
 
 // New constructs a RedisElector and starts its campaign loop. ttl is the lock
-// lifetime; pass <=0 for the default of 10s.
-func New(client *redis.Client, key, id string, ttl time.Duration) *RedisElector {
+// lifetime; pass <=0 for the default of 10s. log is optional; a nil value uses
+// the logx.Default logger.
+func New(client *redis.Client, key, id string, ttl time.Duration, log logx.Logger) *RedisElector {
 	if ttl <= 0 {
 		ttl = 10 * time.Second
 	}
@@ -42,6 +45,7 @@ func New(client *redis.Client, key, id string, ttl time.Duration) *RedisElector 
 		key:    key,
 		id:     id,
 		ttl:    ttl,
+		log:    logx.With(log),
 		stopCh: make(chan struct{}),
 	}
 	e.wg.Add(1)
@@ -92,9 +96,9 @@ func (e *RedisElector) setLeader(v bool) {
 	if e.isLeader != v {
 		e.isLeader = v
 		if v {
-			log.Printf("[elector %s] became LEADER", e.id)
+			e.log.Infof("[elector %s] became LEADER", e.id)
 		} else {
-			log.Printf("[elector %s] lost leadership", e.id)
+			e.log.Infof("[elector %s] lost leadership", e.id)
 		}
 	}
 	e.mu.Unlock()

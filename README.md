@@ -108,6 +108,7 @@ func main() {
 | `Funcs`      | `executor.FuncRegistry`，按名称注册的 Go 函数任务            |
 | `Seed`       | 仅当存储为空时写入的初始化任务                               |
 | `AdminAddr`  | 非空时在该地址启动 Admin HTTP 服务                           |
+| `Logger`     | 可选，自定义 `logx.Logger`；为 `nil` 时使用内置默认 logger    |
 
 ### Engine 主要方法
 
@@ -254,6 +255,37 @@ INSTANCE_ID=cron-a REDIS_ADDR=localhost:6379 go run .
 3. gocron 通过 `Elector` 接口判断当前是否 Leader，仅在 Leader 上真正触发 `Executor.Run`。
 4. `Executor.Run` 重新从存储读取任务定义（因此启停立即生效），按 `Type` 执行 Go 函数或发起 HTTP 请求。
 5. 任意实例通过 Admin API 写入存储后，所有实例在下一个 reconciler 周期对齐，实现集群一致。
+
+## 自定义 Logger
+
+库内部所有日志都通过 `logx.Logger` 接口输出，默认的 `logx.Default()` 使用标准库 `log` 向 stderr 写入并带 `[INFO]`/`[WARN]`/`[ERROR]`/`[DEBUG]` 级别前缀。
+
+如需接入 zap / slog / logrus 等，只需实现该接口并在 `Config.Logger` 中传入：
+
+```go
+type Logger interface {
+	Debugf(format string, args ...any)
+	Infof(format string, args ...any)
+	Warnf(format string, args ...any)
+	Errorf(format string, args ...any)
+}
+```
+
+```go
+// 例：用标准库的 slog 适配
+type slogAdapter struct{ l *slog.Logger }
+func (s slogAdapter) Debugf(f string, a ...any) { s.l.Debug(fmt.Sprintf(f, a...)) }
+func (s slogAdapter) Infof(f string, a ...any)  { s.l.Info(fmt.Sprintf(f, a...)) }
+func (s slogAdapter) Warnf(f string, a ...any)  { s.l.Warn(fmt.Sprintf(f, a...)) }
+func (s slogAdapter) Errorf(f string, a ...any) { s.l.Error(fmt.Sprintf(f, a...)) }
+
+eng, _ := agcron.New(ctx, agcron.Config{
+	// ...
+	Logger: slogAdapter{l: slog.Default()},
+})
+```
+
+`logx` 还提供了 `logx.Noop()`（丢弃所有日志，适合测试或静默运行）。所有构造函数（`elector.New`、`executor.New`、`scheduler.New`、`admin.New` 以及 `agcron.New`）均接受可空的 `logx.Logger`，传入 `nil` 即回退到默认 logger。
 
 ## 许可证
 

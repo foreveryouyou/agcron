@@ -7,13 +7,13 @@ package admin
 import (
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 
 	"github.com/foreveryouyou/agcron/elector"
 	"github.com/foreveryouyou/agcron/jobstore"
 	"github.com/foreveryouyou/agcron/scheduler"
+	"github.com/foreveryouyou/agcron/logx"
 )
 
 // API exposes a tiny control surface so you can modify jobs at runtime and
@@ -24,10 +24,13 @@ type API struct {
 	instID  string
 	elector *elector.RedisElector
 	sched   *scheduler.Scheduler
+	log     logx.Logger
 }
 
-func New(store jobstore.Store, instID string, e *elector.RedisElector, sched *scheduler.Scheduler) *API {
-	return &API{store: store, instID: instID, elector: e, sched: sched}
+// New constructs the admin API. log is optional; a nil value uses the
+// logx.Default logger.
+func New(store jobstore.Store, instID string, e *elector.RedisElector, sched *scheduler.Scheduler, log logx.Logger) *API {
+	return &API{store: store, instID: instID, elector: e, sched: sched, log: logx.With(log)}
 }
 
 func (a *API) Mux() http.Handler {
@@ -51,7 +54,7 @@ func (a *API) status(w http.ResponseWriter, r *http.Request) {
 // echo is a self-contained HTTP target the http-type demo job calls.
 func (a *API) echo(w http.ResponseWriter, r *http.Request) {
 	b, _ := io.ReadAll(r.Body)
-	log.Printf("[echo %s] %s %s body=%s", a.instID, r.Method, r.URL.Path, string(b))
+	a.log.Infof("[echo %s] %s %s body=%s", a.instID, r.Method, r.URL.Path, string(b))
 	w.WriteHeader(200)
 	_, _ = w.Write([]byte(`{"ok":true}`))
 }

@@ -19,7 +19,6 @@ package agcron
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"time"
@@ -30,6 +29,7 @@ import (
 	"github.com/foreveryouyou/agcron/elector"
 	"github.com/foreveryouyou/agcron/executor"
 	"github.com/foreveryouyou/agcron/jobstore"
+	"github.com/foreveryouyou/agcron/logx"
 	"github.com/foreveryouyou/agcron/scheduler"
 )
 
@@ -45,6 +45,7 @@ type Config struct {
 	Funcs      executor.FuncRegistry // Go-function jobs keyed by name
 	Seed       []jobstore.JobDef     // seeded only when the store is empty
 	AdminAddr  string                // if non-empty, serves the admin HTTP API here
+	Logger     logx.Logger           // optional custom logger; nil uses logx.Default
 }
 
 // Engine ties together the store, executor, elector and scheduler.
@@ -56,6 +57,7 @@ type Engine struct {
 	elector *elector.RedisElector
 	sched   *scheduler.Scheduler
 	admin   *admin.API
+	log     logx.Logger
 }
 
 // New constructs and wires up an Engine. It pings Redis and, if Seed is
@@ -67,6 +69,7 @@ func New(ctx context.Context, cfg Config) (*Engine, error) {
 	if cfg.ElectorKey == "" {
 		cfg.ElectorKey = "cron:leader"
 	}
+	lg := logx.With(cfg.Logger)
 
 	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr, Password: cfg.RedisPass})
 	if err := rdb.Ping(ctx).Err(); err != nil {
@@ -77,13 +80,13 @@ func New(ctx context.Context, cfg Config) (*Engine, error) {
 	if store == nil {
 		store = jobstore.New(rdb) // default: Redis-backed store
 	}
-	exec := executor.New(store, cfg.InstanceID, cfg.Funcs)
-	e := elector.New(rdb, cfg.ElectorKey, cfg.InstanceID, cfg.ElectorTTL)
-	sched, err := scheduler.New(store, exec, e, cfg.Reconcile)
+	exec := executor.New(store, cfg.InstanceID, cfg.Funcs, lg)
+	e := elector.New(rdb, cfg.ElectorKey, cfg.InstanceID, cfg.ElectorTTL, lg)
+	sched, err := scheduler.New(store, exec, e, cfg.Reconcile, lg)
 	if err != nil {
 		return nil, fmt.Errorf("create scheduler failed: %w", err)
 	}
-	api := admin.New(store, cfg.InstanceID, e, sched)
+	api := admin.New(store, cfg.InstanceID, e, sched, lg)
 
 	eng := &Engine{
 		cfg:     cfg,
@@ -93,6 +96,7 @@ func New(ctx context.Context, cfg Config) (*Engine, error) {
 		elector: e,
 		sched:   sched,
 		admin:   api,
+		log:     lg,
 	}
 
 	if len(cfg.Seed) > 0 {
@@ -108,9 +112,9 @@ func (e *Engine) Start() {
 	e.sched.Start()
 	if e.cfg.AdminAddr != "" {
 		go func() {
-			log.Printf("[%s] admin on %s", e.cfg.InstanceID, e.cfg.AdminAddr)
+			e.log.Infof("[%s] admin on %s", e.cfg.InstanceID, e.cfg.AdminAddr)
 			if err := http.ListenAndServe(e.cfg.AdminAddr, e.admin.Mux()); err != nil {
-				log.Printf("admin http error: %v", err)
+				e.log.Errorf("admin http error: %v", err)
 			}
 		}()
 	}
