@@ -1,6 +1,7 @@
-// Package jobstore is a Redis-backed, cluster-wide store of scheduled job
-// definitions. Every instance in a cluster reads from the same Redis hash, so
-// a single write (add/update/delete) converges the whole cluster.
+// Package jobstore defines the cluster-wide store of scheduled job
+// definitions. It is interface-based so any backend (Redis, MySQL, in-memory,
+// ...) can be plugged in. Every instance in a cluster reads from the same
+// store, so a single write (add/update/delete) converges the whole cluster.
 package jobstore
 
 import (
@@ -10,6 +11,26 @@ import (
 
 	"github.com/redis/go-redis/v9"
 )
+
+// ErrNotFound is returned by implementations when a requested key does not
+// exist. Get implementations should instead return ok=false; ErrNotFound is
+// provided for advanced callers that need to distinguish "missing" from other
+// failures in a scan-like context.
+var ErrNotFound = errors.New("jobstore: not found")
+
+// Store is the persistence interface used by the scheduler, executor and admin
+// layers. Implementations must be safe for concurrent use from multiple
+// goroutines and instances.
+type Store interface {
+	// List returns all job definitions keyed by ID.
+	List(ctx context.Context) (map[string]JobDef, error)
+	// Get returns the job with the given ID; ok is false when it does not exist.
+	Get(ctx context.Context, id string) (JobDef, bool, error)
+	// Put creates or overwrites a job definition (upsert by ID).
+	Put(ctx context.Context, d JobDef) error
+	// Delete removes the job with the given ID.
+	Delete(ctx context.Context, id string) error
+}
 
 const jobsKey = "cron:jobs"
 
@@ -27,7 +48,7 @@ type HTTPConfig struct {
 }
 
 // JobDef is the shared, cluster-wide definition of a scheduled job.
-// It lives in Redis (one hash) so every instance converges to the same set.
+// It lives in the store so every instance converges to the same set.
 type JobDef struct {
 	ID          string     `json:"id"`
 	Name        string     `json:"name"`
@@ -39,16 +60,21 @@ type JobDef struct {
 	HTTP        HTTPConfig `json:"http,omitempty"` // used when Type == "http"
 }
 
-type Store struct {
+// RedisStore is the default, Redis-backed implementation of Store.
+// Job definitions are kept in a single hash.
+type RedisStore struct {
 	client *redis.Client
 }
 
-// New constructs a Store backed by the given Redis client.
-func New(client *redis.Client) *Store {
-	return &Store{client: client}
+// New constructs a RedisStore backed by the given Redis client.
+func New(client *redis.Client) *RedisStore {
+	return &RedisStore{client: client}
 }
 
-func (s *Store) List(ctx context.Context) (map[string]JobDef, error) {
+// Ensure RedisStore satisfies the Store interface at compile time.
+var _ Store = (*RedisStore)(nil)
+
+func (s *RedisStore) List(ctx context.Context) (map[string]JobDef, error) {
 	res, err := s.client.HGetAll(ctx, jobsKey).Result()
 	if err != nil {
 		return nil, err
@@ -64,7 +90,7 @@ func (s *Store) List(ctx context.Context) (map[string]JobDef, error) {
 	return out, nil
 }
 
-func (s *Store) Get(ctx context.Context, id string) (JobDef, bool, error) {
+func (s *RedisStore) Get(ctx context.Context, id string) (JobDef, bool, error) {
 	raw, err := s.client.HGet(ctx, jobsKey, id).Result()
 	if errors.Is(err, redis.Nil) {
 		return JobDef{}, false, nil
@@ -79,7 +105,7 @@ func (s *Store) Get(ctx context.Context, id string) (JobDef, bool, error) {
 	return d, true, nil
 }
 
-func (s *Store) Put(ctx context.Context, d JobDef) error {
+func (s *RedisStore) Put(ctx context.Context, d JobDef) error {
 	raw, err := json.Marshal(d)
 	if err != nil {
 		return err
@@ -87,18 +113,19 @@ func (s *Store) Put(ctx context.Context, d JobDef) error {
 	return s.client.HSet(ctx, jobsKey, d.ID, raw).Err()
 }
 
-func (s *Store) Delete(ctx context.Context, id string) error {
+func (s *RedisStore) Delete(ctx context.Context, id string) error {
 	return s.client.HDel(ctx, jobsKey, id).Err()
 }
 
-// SeedIfEmpty populates the store with defs only when it is empty,
-// so the demo shows activity out of the box without clobbering user edits.
-func (s *Store) SeedIfEmpty(ctx context.Context, defs []JobDef) error {
-	n, err := s.client.HLen(ctx, jobsKey).Result()
+// SeedIfEmpty populates the store with defs only when it is empty, so the demo
+// shows activity out of the box without clobbering user edits. It works with
+// any Store implementation.
+func SeedIfEmpty(ctx context.Context, s Store, defs []JobDef) error {
+	all, err := s.List(ctx)
 	if err != nil {
 		return err
 	}
-	if n > 0 {
+	if len(all) > 0 {
 		return nil
 	}
 	for _, d := range defs {

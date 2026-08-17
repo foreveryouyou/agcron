@@ -41,6 +41,7 @@ type Config struct {
 	ElectorKey string                // Redis key used for leader election
 	ElectorTTL time.Duration         // leader lock TTL; <=0 means 10s
 	Reconcile  time.Duration         // reconciler poll interval; <=0 means 5s
+	Store      jobstore.Store        // job store; defaults to a Redis-backed store
 	Funcs      executor.FuncRegistry // Go-function jobs keyed by name
 	Seed       []jobstore.JobDef     // seeded only when the store is empty
 	AdminAddr  string                // if non-empty, serves the admin HTTP API here
@@ -50,7 +51,7 @@ type Config struct {
 type Engine struct {
 	cfg     Config
 	rdb     *redis.Client
-	store   *jobstore.Store
+	store   jobstore.Store
 	exec    *executor.Executor
 	elector *elector.RedisElector
 	sched   *scheduler.Scheduler
@@ -72,7 +73,10 @@ func New(ctx context.Context, cfg Config) (*Engine, error) {
 		return nil, fmt.Errorf("redis ping failed: %w", err)
 	}
 
-	store := jobstore.New(rdb)
+	store := cfg.Store
+	if store == nil {
+		store = jobstore.New(rdb) // default: Redis-backed store
+	}
 	exec := executor.New(store, cfg.InstanceID, cfg.Funcs)
 	e := elector.New(rdb, cfg.ElectorKey, cfg.InstanceID, cfg.ElectorTTL)
 	sched, err := scheduler.New(store, exec, e, cfg.Reconcile)
@@ -92,7 +96,7 @@ func New(ctx context.Context, cfg Config) (*Engine, error) {
 	}
 
 	if len(cfg.Seed) > 0 {
-		if err := store.SeedIfEmpty(ctx, cfg.Seed); err != nil {
+		if err := jobstore.SeedIfEmpty(ctx, store, cfg.Seed); err != nil {
 			return nil, fmt.Errorf("seed jobs failed: %w", err)
 		}
 	}
@@ -120,7 +124,7 @@ func (e *Engine) Stop() {
 }
 
 // Store returns the underlying job store for direct read/write access.
-func (e *Engine) Store() *jobstore.Store { return e.store }
+func (e *Engine) Store() jobstore.Store { return e.store }
 
 // Mux returns the admin HTTP handler so you can mount it on your own server.
 func (e *Engine) Mux() http.Handler { return e.admin.Mux() }

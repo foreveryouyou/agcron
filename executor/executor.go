@@ -20,14 +20,14 @@ type JobFunc func(ctx context.Context, j jobstore.JobDef) error
 type FuncRegistry map[string]JobFunc
 
 type Executor struct {
-	store  *jobstore.Store
+	store  jobstore.Store
 	funcs  FuncRegistry
 	instID string
 	client *http.Client
 }
 
 // New constructs an Executor bound to a job store and a set of registered funcs.
-func New(store *jobstore.Store, instID string, funcs FuncRegistry) *Executor {
+func New(store jobstore.Store, instID string, funcs FuncRegistry) *Executor {
 	return &Executor{
 		store:  store,
 		funcs:  funcs,

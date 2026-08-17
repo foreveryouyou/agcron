@@ -27,7 +27,7 @@ type localEntry struct {
 // Scheduler wraps a gocron scheduler plus a reconciler loop.
 type Scheduler struct {
 	gocron   gocron.Scheduler
-	store    *jobstore.Store
+	store    jobstore.Store
 	exec     *executor.Executor
 	interval time.Duration
 
@@ -40,7 +40,7 @@ type Scheduler struct {
 
 // New constructs a Scheduler. interval controls how often the reconciler polls
 // the store; pass <=0 for the 5s default.
-func New(store *jobstore.Store, exec *executor.Executor, e *elector.RedisElector, interval time.Duration) (*Scheduler, error) {
+func New(store jobstore.Store, exec *executor.Executor, e *elector.RedisElector, interval time.Duration) (*Scheduler, error) {
 	g, err := gocron.NewScheduler(gocron.WithDistributedElector(e))
 	if err != nil {
 		return nil, err

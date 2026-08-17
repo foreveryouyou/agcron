@@ -20,13 +20,13 @@ import (
 // watch leadership. Changes are written to the shared store; the reconciler
 // on every instance picks them up, so a single write converges the cluster.
 type API struct {
-	store   *jobstore.Store
+	store   jobstore.Store
 	instID  string
 	elector *elector.RedisElector
 	sched   *scheduler.Scheduler
 }
 
-func New(store *jobstore.Store, instID string, e *elector.RedisElector, sched *scheduler.Scheduler) *API {
+func New(store jobstore.Store, instID string, e *elector.RedisElector, sched *scheduler.Scheduler) *API {
 	return &API{store: store, instID: instID, elector: e, sched: sched}
 }
 
