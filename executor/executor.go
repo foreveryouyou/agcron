@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/foreveryouyou/gcron/jobstore"
+	"github.com/foreveryouyou/agcron/jobstore"
 )
 
 // JobFunc is a registered Go-function task.

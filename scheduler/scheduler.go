@@ -13,9 +13,9 @@ import (
 	"github.com/go-co-op/gocron/v2"
 	"github.com/google/uuid"
 
-	"github.com/foreveryouyou/gcron/elector"
-	"github.com/foreveryouyou/gcron/executor"
-	"github.com/foreveryouyou/gcron/jobstore"
+	"github.com/foreveryouyou/agcron/elector"
+	"github.com/foreveryouyou/agcron/executor"
+	"github.com/foreveryouyou/agcron/jobstore"
 )
 
 type localEntry struct {

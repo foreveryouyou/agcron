@@ -1,20 +1,20 @@
-// Package gcron is a distributed, Redis-backed cron library. It wraps gocron
+// Package agcron is a distributed, Redis-backed cron library. It wraps gocron
 // with a Redis leader election and a shared job store, so a cluster of
 // processes runs each scheduled job exactly once — on the leader instance —
 // while followers stay warm and take over if the leader dies.
 //
 // Minimal usage:
 //
-//	eng, err := gcron.New(ctx, gcron.Config{
+//	eng, err := agcron.New(ctx, agcron.Config{
 //		RedisAddr:  "localhost:6379",
 //		InstanceID: "node-1",
-//		Funcs:      gcron.FuncRegistry{"sayHello": sayHello},
+//		Funcs:      agcron.FuncRegistry{"sayHello": sayHello},
 //		Seed:       []jobstore.JobDef{ /* ... */ },
 //	})
 //	if err != nil { log.Fatal(err) }
 //	eng.Start()
 //	defer eng.Stop()
-package gcron
+package agcron
 
 import (
 	"context"
@@ -26,24 +26,24 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/foreveryouyou/gcron/admin"
-	"github.com/foreveryouyou/gcron/elector"
-	"github.com/foreveryouyou/gcron/executor"
-	"github.com/foreveryouyou/gcron/jobstore"
-	"github.com/foreveryouyou/gcron/scheduler"
+	"github.com/foreveryouyou/agcron/admin"
+	"github.com/foreveryouyou/agcron/elector"
+	"github.com/foreveryouyou/agcron/executor"
+	"github.com/foreveryouyou/agcron/jobstore"
+	"github.com/foreveryouyou/agcron/scheduler"
 )
 
 // Config configures an Engine.
 type Config struct {
-	RedisAddr  string              // Redis address, e.g. "localhost:6379"
-	RedisPass  string              // Redis password (may be empty)
-	InstanceID string              // unique per process; defaults to hostname
-	ElectorKey string              // Redis key used for leader election
-	ElectorTTL time.Duration       // leader lock TTL; <=0 means 10s
-	Reconcile  time.Duration       // reconciler poll interval; <=0 means 5s
+	RedisAddr  string                // Redis address, e.g. "localhost:6379"
+	RedisPass  string                // Redis password (may be empty)
+	InstanceID string                // unique per process; defaults to hostname
+	ElectorKey string                // Redis key used for leader election
+	ElectorTTL time.Duration         // leader lock TTL; <=0 means 10s
+	Reconcile  time.Duration         // reconciler poll interval; <=0 means 5s
 	Funcs      executor.FuncRegistry // Go-function jobs keyed by name
-	Seed       []jobstore.JobDef   // seeded only when the store is empty
-	AdminAddr  string              // if non-empty, serves the admin HTTP API here
+	Seed       []jobstore.JobDef     // seeded only when the store is empty
+	AdminAddr  string                // if non-empty, serves the admin HTTP API here
 }
 
 // Engine ties together the store, executor, elector and scheduler.

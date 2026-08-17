@@ -11,9 +11,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/foreveryouyou/gcron/elector"
-	"github.com/foreveryouyou/gcron/jobstore"
-	"github.com/foreveryouyou/gcron/scheduler"
+	"github.com/foreveryouyou/agcron/elector"
+	"github.com/foreveryouyou/agcron/jobstore"
+	"github.com/foreveryouyou/agcron/scheduler"
 )
 
 // API exposes a tiny control surface so you can modify jobs at runtime and

@@ -1,4 +1,4 @@
-module github.com/foreveryouyou/gcron
+module github.com/foreveryouyou/agcron
 
 go 1.24
 

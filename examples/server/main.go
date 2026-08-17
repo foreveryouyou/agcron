@@ -1,4 +1,4 @@
-// Command server is an example use of the gcron library: it starts a single
+// Command server is an example use of the agcron library: it starts a single
 // distributed cron engine, seeds two demo jobs, and serves the admin API.
 // Run multiple copies (with different INSTANCE_ID) against the same Redis to
 // see leader election in action.
@@ -12,9 +12,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/foreveryouyou/gcron"
-	"github.com/foreveryouyou/gcron/executor"
-	"github.com/foreveryouyou/gcron/jobstore"
+	"github.com/foreveryouyou/agcron"
+	"github.com/foreveryouyou/agcron/executor"
+	"github.com/foreveryouyou/agcron/jobstore"
 )
 
 func main() {
@@ -23,7 +23,7 @@ func main() {
 		instID, _ = os.Hostname()
 	}
 
-	eng, err := gcron.New(context.Background(), gcron.Config{
+	eng, err := agcron.New(context.Background(), agcron.Config{
 		RedisAddr:  envOr("REDIS_ADDR", "localhost:6379"),
 		RedisPass:  envOr("REDIS_PASS", "redis_JPtEYa"),
 		InstanceID: instID,
@@ -82,7 +82,7 @@ func exampleJobs() []jobstore.JobDef {
 			Schedule:    "*/15 * * * * *",
 			WithSeconds: true,
 			Enabled:     true,
-			HTTP:        jobstore.HTTPConfig{Method: "POST", URL: "http://localhost:8080/echo", Body: `{"from":"gcron"}`},
+			HTTP:        jobstore.HTTPConfig{Method: "POST", URL: "http://localhost:8080/echo", Body: `{"from":"agcron"}`},
 		},
 	}
 }

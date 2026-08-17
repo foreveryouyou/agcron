@@ -29,13 +29,13 @@ type HTTPConfig struct {
 // JobDef is the shared, cluster-wide definition of a scheduled job.
 // It lives in Redis (one hash) so every instance converges to the same set.
 type JobDef struct {
-	ID          string      `json:"id"`
-	Name        string      `json:"name"`
-	Type        JobType     `json:"type"` // "func" or "http"
-	Schedule    string      `json:"schedule"`
-	WithSeconds bool        `json:"with_seconds"` // true => 6-field cron (with seconds)
-	Enabled     bool        `json:"enabled"`
-	Func        string      `json:"func,omitempty"` // used when Type == "func"
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Type        JobType    `json:"type"` // "func" or "http"
+	Schedule    string     `json:"schedule"`
+	WithSeconds bool       `json:"with_seconds"` // true => 6-field cron (with seconds)
+	Enabled     bool       `json:"enabled"`
+	Func        string     `json:"func,omitempty"` // used when Type == "func"
 	HTTP        HTTPConfig `json:"http,omitempty"` // used when Type == "http"
 }
 
