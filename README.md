@@ -257,4 +257,4 @@ INSTANCE_ID=cron-a REDIS_ADDR=localhost:6379 go run .
 
 ## 许可证
 
-详见仓库 LICENSE。
+本项目采用 [MIT License](./LICENSE)，允许自由使用、复制、修改、合并、发布、再许可及销售，唯一条件是保留版权声明与许可声明。
