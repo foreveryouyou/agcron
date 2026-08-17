@@ -63,10 +63,30 @@ CREATE TABLE IF NOT EXISTS cron_jobs (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `
 
-// Migrate creates the job table if it does not exist.
+// execDDL is the schema for the last-execution table. It is kept separate from
+// cron_jobs so existing deployments are not forced to migrate their job table.
+const execDDL = `
+CREATE TABLE IF NOT EXISTS cron_executions (
+    job_id       VARCHAR(128) NOT NULL,
+    job_name     VARCHAR(255) NOT NULL DEFAULT '',
+    instance     VARCHAR(255) NOT NULL DEFAULT '',
+    started_at   DATETIME(3)  NOT NULL,
+    finished_at  DATETIME(3)  NOT NULL,
+    success      TINYINT(1)   NOT NULL DEFAULT 0,
+    error        TEXT         NULL,
+    http_status  INT          NOT NULL DEFAULT 0,
+    http_body    TEXT         NULL,
+    PRIMARY KEY (job_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+`
+
+// Migrate creates the job table (and the executions table) if they do not exist.
 func (s *Store) Migrate(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, DDL); err != nil {
-		return fmt.Errorf("mysqlstore: migrate: %w", err)
+		return fmt.Errorf("mysqlstore: migrate jobs: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, execDDL); err != nil {
+		return fmt.Errorf("mysqlstore: migrate executions: %w", err)
 	}
 	return nil
 }
@@ -135,6 +155,54 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 		return fmt.Errorf("mysqlstore: delete %q: %w", id, err)
 	}
 	return nil
+}
+
+func (s *Store) OnExecuted(ctx context.Context, rec jobstore.ExecutionRecord) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO cron_executions
+		 (job_id, job_name, instance, started_at, finished_at, success, error, http_status, http_body)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON DUPLICATE KEY UPDATE
+		 job_name = VALUES(job_name), instance = VALUES(instance),
+		 started_at = VALUES(started_at), finished_at = VALUES(finished_at),
+		 success = VALUES(success), error = VALUES(error),
+		 http_status = VALUES(http_status), http_body = VALUES(http_body)`,
+		rec.JobID, rec.JobName, rec.Instance,
+		rec.StartedAt, rec.FinishedAt, rec.Success, nullString(rec.Error),
+		rec.HTTPStatus, nullString(rec.HTTPBody))
+	if err != nil {
+		return fmt.Errorf("mysqlstore: on_executed %q: %w", rec.JobID, err)
+	}
+	return nil
+}
+
+func (s *Store) LastExecution(ctx context.Context, jobID string) (jobstore.ExecutionRecord, bool, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT job_id, job_name, instance, started_at, finished_at, success, error, http_status, http_body
+		 FROM cron_executions WHERE job_id = ?`, jobID)
+
+	var (
+		rec      jobstore.ExecutionRecord
+		success  bool
+		errStr   sql.NullString
+		bodyStr  sql.NullString
+	)
+	if err := row.Scan(&rec.JobID, &rec.JobName, &rec.Instance,
+		&rec.StartedAt, &rec.FinishedAt, &success, &errStr, &rec.HTTPStatus, &bodyStr); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return jobstore.ExecutionRecord{}, false, nil
+		}
+		return jobstore.ExecutionRecord{}, false, fmt.Errorf("mysqlstore: last_execution %q: %w", jobID, err)
+	}
+	rec.Success = success
+	rec.Error = errStr.String
+	rec.HTTPBody = bodyStr.String
+	return rec, true, nil
+}
+
+// nullString wraps a Go string into a sql.NullString (empty => NULL).
+func nullString(s string) sql.NullString {
+	return sql.NullString{String: s, Valid: s != ""}
 }
 
 type rowScanner interface {

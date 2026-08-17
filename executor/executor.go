@@ -5,6 +5,7 @@ package executor
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -48,19 +49,31 @@ func (e *Executor) RegisterFunc(name string, fn JobFunc) {
 
 // Run is the task body bound to every job. It is invoked by gocron only on the
 // leader instance. It re-reads the definition from the shared store so that
-// enable/disable takes effect immediately across the cluster.
+// enable/disable takes effect immediately across the cluster. The outcome is
+// recorded via Store.OnExecuted for later inspection through the admin API.
 func (e *Executor) Run(ctx context.Context, jobID string) {
+	started := time.Now()
+	rec := jobstore.ExecutionRecord{
+		JobID:     jobID,
+		Instance:  e.instID,
+		StartedAt: started,
+	}
+
 	d, ok, err := e.store.Get(ctx, jobID)
 	if err != nil {
 		e.log.Errorf("[exec %s] get %s error: %v", e.instID, jobID, err)
+		e.finish(rec, d, false, err, 0, "")
 		return
 	}
 	if !ok {
 		e.log.Warnf("[exec %s] job %s no longer exists", e.instID, jobID)
+		e.finish(rec, jobstore.JobDef{ID: jobID}, false, fmt.Errorf("job no longer exists"), 0, "")
 		return
 	}
+	rec.JobName = d.Name
 	if !d.Enabled {
 		e.log.Infof("[exec %s] job %q disabled, skip", e.instID, d.Name)
+		e.finish(rec, d, false, fmt.Errorf("job disabled"), 0, "")
 		return
 	}
 
@@ -70,41 +83,71 @@ func (e *Executor) Run(ctx context.Context, jobID string) {
 		fn, found := e.funcs[d.Func]
 		if !found {
 			e.log.Errorf("[exec %s] func %q not registered", e.instID, d.Func)
+			e.finish(rec, d, false, fmt.Errorf("func %q not registered", d.Func), 0, "")
 			return
 		}
 		if err := fn(ctx, d); err != nil {
 			e.log.Errorf("[exec %s] func %q error: %v", e.instID, d.Func, err)
+			e.finish(rec, d, false, err, 0, "")
+			return
 		}
+		e.finish(rec, d, true, nil, 0, "")
 	case jobstore.JobTypeHTTP:
-		e.doHTTP(ctx, d)
+		status, body, err := e.doHTTP(ctx, d)
+		if err != nil {
+			e.finish(rec, d, false, err, status, body)
+			return
+		}
+		e.finish(rec, d, true, nil, status, body)
 	default:
 		e.log.Errorf("[exec %s] unknown job type %q", e.instID, d.Type)
+		e.finish(rec, d, false, fmt.Errorf("unknown job type %q", d.Type), 0, "")
 	}
 }
 
-func (e *Executor) doHTTP(ctx context.Context, d jobstore.JobDef) {
+// finish records the outcome of a run and persists it via Store.OnExecuted.
+// Errors here are logged but never fatal to the scheduler.
+func (e *Executor) finish(rec jobstore.ExecutionRecord, d jobstore.JobDef, success bool, runErr error, httpStatus int, httpBody string) {
+	if rec.JobName == "" {
+		rec.JobName = d.Name
+	}
+	rec.FinishedAt = time.Now()
+	rec.Success = success
+	rec.HTTPStatus = httpStatus
+	rec.HTTPBody = httpBody
+	if runErr != nil {
+		rec.Error = runErr.Error()
+	}
+	if err := e.store.OnExecuted(context.Background(), rec); err != nil {
+		e.log.Errorf("[exec %s] record execution of %s error: %v", e.instID, rec.JobID, err)
+	}
+}
+
+func (e *Executor) doHTTP(ctx context.Context, d jobstore.JobDef) (status int, body string, err error) {
 	method := d.HTTP.Method
 	if method == "" {
 		method = http.MethodPost
 	}
-	var body io.Reader
+	var r io.Reader
 	if d.HTTP.Body != "" {
-		body = bytes.NewBufferString(d.HTTP.Body)
+		r = bytes.NewBufferString(d.HTTP.Body)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, d.HTTP.URL, body)
+	req, err := http.NewRequestWithContext(ctx, method, d.HTTP.URL, r)
 	if err != nil {
 		e.log.Errorf("[exec %s] http new request error: %v", e.instID, err)
-		return
+		return 0, "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := e.client.Do(req)
 	if err != nil {
 		e.log.Errorf("[exec %s] http do error: %v", e.instID, err)
-		return
+		return 0, "", err
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
-	e.log.Infof("[exec %s] http %s -> %d %s", e.instID, d.HTTP.URL, resp.StatusCode, truncate(string(b)))
+	body = truncate(string(b))
+	e.log.Infof("[exec %s] http %s -> %d %s", e.instID, d.HTTP.URL, resp.StatusCode, body)
+	return resp.StatusCode, body, nil
 }
 
 func truncate(s string) string {

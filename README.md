@@ -163,6 +163,47 @@ jobstore.JobDef{
 }
 ```
 
+## 执行结果记录
+
+库会自动记录每个任务的**最后一次**执行结果（仅 Leader 实例执行时写入），可通过 Admin API 查询，便于监控任务健康状况。
+
+记录结构（`jobstore.ExecutionRecord`）包含：任务 ID / 名称、执行实例、开始/结束时间、是否成功、失败原因，以及 HTTP 任务的**响应状态码与响应体**：
+
+```go
+type ExecutionRecord struct {
+	JobID      string    // 对应 JobDef.ID
+	JobName    string    // 冗余名称，便于展示
+	Instance   string    // 执行者 instanceID（即 Leader）
+	StartedAt  time.Time
+	FinishedAt time.Time
+	Success    bool
+	Error      string    // 失败原因，成功时为空
+	HTTPStatus int       // HTTP 任务的状态码；func 任务为 0
+	HTTPBody   string    // HTTP 任务的响应体（已截断）
+}
+```
+
+底层通过 `Store` 接口的两个方法持久化，默认实现为覆盖写（每任务仅保留最近一次）：
+
+```go
+// 执行后由 executor 自动调用
+OnExecuted(ctx context.Context, rec ExecutionRecord) error
+// 读取最近一次结果
+LastExecution(ctx context.Context, jobID string) (ExecutionRecord, bool, error)
+```
+
+- **Redis 存储**：使用独立 hash key `cron:executions`，按 `JobID` 覆盖。
+- **MySQL 存储**：使用独立表 `cron_executions`，随 `Migrate` 自动创建；该表与 `cron_jobs` 解耦，不影响既有 job 表结构。
+
+Admin API 的 `/status`、`/jobs`、`/jobs/{id}` 会在每个任务对象中附带 `last_execution` 字段（无记录时省略）。例如：
+
+```bash
+curl http://localhost:8080/jobs/job-http
+# => {"id":"job-http","name":"ping-echo",...,"last_execution":{"job_id":"job-http","success":true,"http_status":200,"http_body":"{\"ok\":true}","finished_at":"..."}}
+```
+
+如需接入自定义存储，实现 `Store` 接口时一并实现 `OnExecuted` 与 `LastExecution` 即可。
+
 ## Admin HTTP API
 
 当 `Config.AdminAddr` 非空时，自动暴露以下端点：

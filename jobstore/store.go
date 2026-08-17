@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -30,9 +31,32 @@ type Store interface {
 	Put(ctx context.Context, d JobDef) error
 	// Delete removes the job with the given ID.
 	Delete(ctx context.Context, id string) error
+	// OnExecuted records the result of a single job execution. Implementations
+	// keep only the most recent result per job (overwrite semantics). The
+	// executor calls this once after every run (on the leader instance).
+	OnExecuted(ctx context.Context, rec ExecutionRecord) error
+	// LastExecution returns the most recent execution record for the job, or
+	// ok=false when none has been recorded yet.
+	LastExecution(ctx context.Context, jobID string) (ExecutionRecord, bool, error)
+}
+
+// ExecutionRecord describes the outcome of one job execution. It is recorded by
+// the executor via Store.OnExecuted and can be retrieved through
+// Store.LastExecution or the admin API. Only the latest record per job is kept.
+type ExecutionRecord struct {
+	JobID      string    `json:"job_id"`      // matches JobDef.ID
+	JobName    string    `json:"job_name"`    // denormalized for display
+	Instance   string    `json:"instance"`    // instanceID that ran the job (the leader)
+	StartedAt  time.Time `json:"started_at"`  // when the run began
+	FinishedAt time.Time `json:"finished_at"` // when the run completed
+	Success    bool      `json:"success"`     // true when the run succeeded
+	Error      string    `json:"error,omitempty"`   // failure reason; empty on success
+	HTTPStatus int       `json:"http_status,omitempty"` // HTTP status; 0 for func jobs
+	HTTPBody   string    `json:"http_body,omitempty"`   // HTTP response body (truncated)
 }
 
 const jobsKey = "cron:jobs"
+const execKey = "cron:executions" // last ExecutionRecord per job, keyed by jobID
 
 type JobType string
 
@@ -115,6 +139,29 @@ func (s *RedisStore) Put(ctx context.Context, d JobDef) error {
 
 func (s *RedisStore) Delete(ctx context.Context, id string) error {
 	return s.client.HDel(ctx, jobsKey, id).Err()
+}
+
+func (s *RedisStore) OnExecuted(ctx context.Context, rec ExecutionRecord) error {
+	raw, err := json.Marshal(rec)
+	if err != nil {
+		return err
+	}
+	return s.client.HSet(ctx, execKey, rec.JobID, raw).Err()
+}
+
+func (s *RedisStore) LastExecution(ctx context.Context, jobID string) (ExecutionRecord, bool, error) {
+	raw, err := s.client.HGet(ctx, execKey, jobID).Result()
+	if errors.Is(err, redis.Nil) {
+		return ExecutionRecord{}, false, nil
+	}
+	if err != nil {
+		return ExecutionRecord{}, false, err
+	}
+	var rec ExecutionRecord
+	if err := json.Unmarshal([]byte(raw), &rec); err != nil {
+		return ExecutionRecord{}, false, err
+	}
+	return rec, true, nil
 }
 
 // SeedIfEmpty populates the store with defs only when it is empty, so the demo
