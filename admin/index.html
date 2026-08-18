@@ -485,6 +485,7 @@ async function onAction(ev) {
   const action = btn.dataset.action;
   try {
     if (action === 'run') {
+      if (!confirm('确定立即执行任务「' + id + '」？')) return;
       await api('api/jobs/' + encodeURIComponent(id) + '/run', 'POST');
       toast('已触发任务「' + id + '」执行');
     } else if (action === 'edit') {

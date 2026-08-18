@@ -53,7 +53,19 @@ func (e *Executor) RegisterFunc(name string, fn JobFunc) {
 // leader instance. It re-reads the definition from the shared store so that
 // enable/disable takes effect immediately across the cluster. The outcome is
 // recorded via Store.OnExecuted for later inspection through the admin API.
+// Disabled (paused) jobs are skipped without producing an execution record.
 func (e *Executor) Run(ctx context.Context, jobID string) {
+	e.run(ctx, jobID, false)
+}
+
+// ForceRun runs a job immediately regardless of its Enabled flag. It is used
+// by the admin API for manual "run now" triggers so that a paused job can
+// still be executed on demand.
+func (e *Executor) ForceRun(ctx context.Context, jobID string) {
+	e.run(ctx, jobID, true)
+}
+
+func (e *Executor) run(ctx context.Context, jobID string, force bool) {
 	started := time.Now()
 	rec := jobstore.ExecutionRecord{
 		JobID:     jobID,
@@ -73,10 +85,9 @@ func (e *Executor) Run(ctx context.Context, jobID string) {
 		return
 	}
 	rec.JobName = d.Name
-	if !d.Enabled {
+	if !force && !d.Enabled {
 		e.log.Infof("[exec %s] job %q disabled, skip", e.instID, d.Name)
-		e.finish(rec, d, false, fmt.Errorf("job disabled"), 0, "")
-		return
+		return // no execution record: a paused job must not surface as an error
 	}
 
 	e.log.Infof("[exec %s] >>> running job %q (type=%s)", e.instID, d.Name, d.Type)

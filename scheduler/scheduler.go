@@ -139,11 +139,13 @@ func (s *Scheduler) add(id string, d jobstore.JobDef) {
 // RunNow triggers an immediate execution of the job on the instance receiving
 // the request, outside its regular schedule. It is used by the admin API for
 // manual runs and returns false when the job does not exist in the store.
+// Unlike scheduled runs, a manual run executes the job even when it is
+// disabled (paused).
 func (s *Scheduler) RunNow(ctx context.Context, id string) bool {
 	if _, ok, err := s.store.Get(ctx, id); err != nil || !ok {
 		return false
 	}
-	s.exec.Run(ctx, id)
+	s.exec.ForceRun(ctx, id)
 	return true
 }
 
