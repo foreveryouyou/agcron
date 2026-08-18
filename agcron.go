@@ -36,18 +36,19 @@ import (
 
 // Config configures an Engine.
 type Config struct {
-	RedisAddr  string                // Redis address, e.g. "localhost:6379"
-	RedisPass  string                // Redis password (may be empty)
-	InstanceID string                // unique per process; defaults to hostname
-	ElectorKey string                // Redis key used for leader election
-	ElectorTTL time.Duration         // leader lock TTL; <=0 means 10s
-	Reconcile  time.Duration         // reconciler poll interval; <=0 means 5s
-	Store      jobstore.Store        // job store; defaults to a Redis-backed store
-	Funcs      executor.FuncRegistry // Go-function jobs keyed by name
-	Seed       []jobstore.JobDef     // seeded only when the store is empty
-	AdminAddr  string                // if non-empty, serves the admin HTTP API here
-	Logger     logx.Logger           // optional custom logger; nil uses logx.Default
-	KeyPrefix  string                // Redis key prefix; defaults to "cron", avoids collisions when sharing one Redis DB
+	RedisAddr   string                // Redis address, e.g. "localhost:6379"
+	RedisPass   string                // Redis password (may be empty)
+	RedisPrefix string                // Redis key prefix; defaults to "cron", avoids collisions when sharing one Redis DB
+	InstanceID  string                // unique per process; defaults to hostname
+	ElectorKey  string                // Redis key used for leader election
+	ElectorTTL  time.Duration         // leader lock TTL; <=0 means 10s
+	Reconcile   time.Duration         // reconciler poll interval; <=0 means 5s
+	Store       jobstore.Store        // job store; defaults to a Redis-backed store
+	Funcs       executor.FuncRegistry // Go-function jobs keyed by name
+	Seed        []jobstore.JobDef     // seeded only when the store is empty
+	AdminAddr   string                // if non-empty, serves the admin HTTP API here
+	AdminPrefix string                // URL prefix of the admin UI/API; empty means "/agcron", "/" mounts at the server root
+	Logger      logx.Logger           // optional custom logger; nil uses logx.Default
 }
 
 // Engine ties together the store, executor, elector and scheduler.
@@ -72,10 +73,10 @@ func New(ctx context.Context, cfg Config) (*Engine, error) {
 	// KeyPrefix is simply prepended, e.g. "my:" -> "my:agcron:jobs".
 	// An empty KeyPrefix yields the bare "agcron:*" keys. A non-empty
 	// KeyPrefix is normalized to end with ":" so users may pass "my" or "my:".
-	if cfg.KeyPrefix != "" && !strings.HasSuffix(cfg.KeyPrefix, ":") {
-		cfg.KeyPrefix += ":"
+	if cfg.RedisPrefix != "" && !strings.HasSuffix(cfg.RedisPrefix, ":") {
+		cfg.RedisPrefix += ":"
 	}
-	prefix := cfg.KeyPrefix + "agcron"
+	prefix := cfg.RedisPrefix + "agcron"
 	if cfg.ElectorKey == "" {
 		cfg.ElectorKey = prefix + ":leader"
 	}
@@ -96,7 +97,7 @@ func New(ctx context.Context, cfg Config) (*Engine, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create scheduler failed: %w", err)
 	}
-	api := admin.New(store, cfg.InstanceID, e, sched, lg)
+	api := admin.NewWithPrefix(store, cfg.InstanceID, e, sched, cfg.AdminPrefix, lg)
 
 	eng := &Engine{
 		cfg:     cfg,
@@ -122,7 +123,7 @@ func (e *Engine) Start() {
 	e.sched.Start()
 	if e.cfg.AdminAddr != "" {
 		go func() {
-			e.log.Infof("[%s] admin on %s", e.cfg.InstanceID, e.cfg.AdminAddr)
+			e.log.Infof("[%s] admin on %s%s", e.cfg.InstanceID, e.cfg.AdminAddr, e.admin.Prefix())
 			if err := http.ListenAndServe(e.cfg.AdminAddr, e.admin.Mux()); err != nil {
 				e.log.Errorf("admin http error: %v", err)
 			}

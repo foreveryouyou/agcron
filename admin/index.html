@@ -286,7 +286,7 @@
 </head>
 <body>
 <header>
-  <h1><span class="logo">C</span>agcron 任务管理</h1>
+  <h1><span class="logo">AG</span>agcron 任务管理</h1>
   <div class="meta">
     <span class="chip">实例 <b id="instance">—</b></span>
     <span class="chip follower" id="leader">—</span>
@@ -464,7 +464,7 @@ function render() {
 
 async function refresh() {
   try {
-    const s = await api('/api/status');
+    const s = await api('api/status');
     $('#instance').textContent = s.instance_id || '—';
     const leader = $('#leader');
     leader.textContent = s.is_leader ? 'LEADER' : 'FOLLOWER';
@@ -485,14 +485,14 @@ async function onAction(ev) {
   const action = btn.dataset.action;
   try {
     if (action === 'run') {
-      await api('/api/jobs/' + encodeURIComponent(id) + '/run', 'POST');
+      await api('api/jobs/' + encodeURIComponent(id) + '/run', 'POST');
       toast('已触发任务「' + id + '」执行');
     } else if (action === 'edit') {
       openModal(jobs.find(j => j.id === id));
       return;
     } else if (action === 'delete') {
       if (!confirm('确定删除任务「' + id + '」？')) return;
-      await api('/api/jobs/' + encodeURIComponent(id), 'DELETE');
+      await api('api/jobs/' + encodeURIComponent(id), 'DELETE');
       toast('任务「' + id + '」已删除', 'success');
     }
     refresh();
@@ -510,7 +510,7 @@ function onToggle(ev) {
     input.checked = true;
     return;
   }
-  api('/api/jobs/' + encodeURIComponent(id) + (enable ? '/resume' : '/pause'), 'POST')
+  api('api/jobs/' + encodeURIComponent(id) + (enable ? '/resume' : '/pause'), 'POST')
     .then(() => { toast('任务「' + id + '」' + (enable ? '已恢复' : '已暂停'), 'success'); refresh(); })
     .catch(e => { toast(e.message, 'error'); input.checked = !enable; });
 }
@@ -603,7 +603,7 @@ $('#jobForm').addEventListener('submit', async ev => {
   let job;
   try { job = jobFromForm(); } catch (e) { toast(e.message, 'error'); return; }
   try {
-    const saved = await api('/api/jobs', 'POST', job);
+    const saved = await api('api/jobs', 'POST', job);
     closeModal();
     toast('任务「' + (saved.name || saved.id) + '」已保存', 'success');
     refresh();

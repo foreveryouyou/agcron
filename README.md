@@ -108,6 +108,7 @@ func main() {
 | `Funcs`      | `executor.FuncRegistry`，按名称注册的 Go 函数任务            |
 | `Seed`       | 仅当存储为空时写入的初始化任务                               |
 | `AdminAddr`  | 非空时在该地址启动 Admin HTTP 服务                           |
+| `AdminPrefix` | Admin UI/API 的 URL 前缀，默认 `/agcron`；设为 `/` 可挂载在根路径 |
 | `Logger`     | 可选，自定义 `logx.Logger`；为 `nil` 时使用内置默认 logger    |
 | `KeyPrefix`  | 拼在固定层 `agcron` 之前的前缀（如 `"my:"` → `my:agcron:jobs`）；为空则直接用 `agcron:*`，多系统共用 Redis DB 时设不同值避免冲突 |
 
@@ -158,7 +159,7 @@ jobstore.JobDef{
 	Enabled: true,
 	HTTP: jobstore.HTTPConfig{
 		Method: "POST",
-		URL:    "http://localhost:8080/api/echo",
+		URL:    "http://localhost:8080/agcron/api/echo",
 		Body:   `{"from":"agcron"}`,
 	},
 }
@@ -196,10 +197,10 @@ LastExecution(ctx context.Context, jobID string) (ExecutionRecord, bool, error)
 - **Redis 存储**：使用独立 hash key `cron:executions`，按 `JobID` 覆盖。
 - **MySQL 存储**：使用独立表 `cron_executions`，随 `Migrate` 自动创建；该表与 `cron_jobs` 解耦，不影响既有 job 表结构。
 
-Admin API 的 `/api/status`、`/api/jobs`、`/api/jobs/{id}` 会在每个任务对象中附带 `last_execution` 字段（无记录时省略）。例如：
+Admin API 的 `/agcron/api/status`、`/agcron/api/jobs`、`/agcron/api/jobs/{id}` 会在每个任务对象中附带 `last_execution` 字段（无记录时省略）。例如：
 
 ```bash
-curl http://localhost:8080/api/jobs/job-http
+curl http://localhost:8080/agcron/api/jobs/job-http
 # => {"id":"job-http","name":"ping-echo",...,"last_execution":{"job_id":"job-http","success":true,"http_status":200,"http_body":"{\"ok\":true}","finished_at":"..."}}
 ```
 
@@ -207,20 +208,20 @@ curl http://localhost:8080/api/jobs/job-http
 
 ## Admin HTTP API
 
-当 `Config.AdminAddr` 非空时，自动暴露以下端点（所有路径以 `/api` 为统一前缀）：
+当 `Config.AdminAddr` 非空时，自动暴露管理面。所有路径带统一前缀，默认前缀为 `/agcron`，可通过 `Config.AdminPrefix` 自定义（设为 `/` 时挂载在根路径，即旧版无前缀行为）：
 
-| 方法     | 路径                   | 说明                                               |
-| -------- | ---------------------- | -------------------------------------------------- |
-| `GET`    | `/`                    | 内嵌的任务管理 Web UI（零依赖，直接浏览器访问）    |
-| `GET`    | `/api/status`          | 返回当前实例、是否 Leader、全部任务                |
-| `GET`    | `/api/jobs`            | 列出全部任务                                       |
-| `POST`   | `/api/jobs`            | 创建 / 覆盖一个任务（body 为 `JobDef`，需含 `id`） |
-| `GET`    | `/api/jobs/{id}`       | 获取单个任务                                       |
-| `DELETE` | `/api/jobs/{id}`       | 删除任务                                           |
-| `POST`   | `/api/jobs/{id}/pause` | 暂停任务（`Enabled=false`）                        |
-| `POST`   | `/api/jobs/{id}/resume`| 恢复任务（`Enabled=true`）                         |
-| `POST`   | `/api/jobs/{id}/run`   | 立即执行一次任务（在收到请求的实例上触发）         |
-| `POST`   | `/api/echo`            | 示例 HTTP 任务的自带回显目标                       |
+| 方法     | 路径                          | 说明                                               |
+| -------- | ----------------------------- | -------------------------------------------------- |
+| `GET`    | `/agcron`                     | 内嵌的任务管理 Web UI（零依赖，直接浏览器访问）    |
+| `GET`    | `/agcron/api/status`          | 返回当前实例、是否 Leader、全部任务                |
+| `GET`    | `/agcron/api/jobs`            | 列出全部任务                                       |
+| `POST`   | `/agcron/api/jobs`            | 创建 / 覆盖一个任务（body 为 `JobDef`，需含 `id`） |
+| `GET`    | `/agcron/api/jobs/{id}`       | 获取单个任务                                       |
+| `DELETE` | `/agcron/api/jobs/{id}`       | 删除任务                                           |
+| `POST`   | `/agcron/api/jobs/{id}/pause` | 暂停任务（`Enabled=false`）                        |
+| `POST`   | `/agcron/api/jobs/{id}/resume`| 恢复任务（`Enabled=true`）                         |
+| `POST`   | `/agcron/api/jobs/{id}/run`   | 立即执行一次任务（在收到请求的实例上触发）         |
+| `POST`   | `/agcron/api/echo`            | 示例 HTTP 任务的自带回显目标                       |
 
 > 任意实例收到写入请求后写入共享存储，reconciler 会在各实例上周期对齐，因此**单机写入即可收敛整个集群**。
 
@@ -228,20 +229,28 @@ curl http://localhost:8080/api/jobs/job-http
 
 ```bash
 # 查看状态
-curl http://localhost:8080/api/status
+curl http://localhost:8080/agcron/api/status
 
 # 新增一个任务
-curl -X POST http://localhost:8080/api/jobs \
+curl -X POST http://localhost:8080/agcron/api/jobs \
   -H 'Content-Type: application/json' \
   -d '{"id":"job-x","name":"demo","type":"func","schedule":"*/10 * * * * *","with_seconds":true,"enabled":true,"func":"sayHello"}'
 
 # 暂停任务
-curl -X POST http://localhost:8080/api/jobs/job-x/pause
+curl -X POST http://localhost:8080/agcron/api/jobs/job-x/pause
 ```
 
-也可以把 Admin 挂载到自己的 HTTP server（Mux 内路径已含 `/api` 前缀，挂载后实际访问为 `/agcron/api/...`）：
+也可以把 Admin 挂载到自己的 HTTP server。`Mux()` 返回的 handler **已内含前缀**，直接挂到根路径即可：
 
 ```go
+http.Handle("/", eng.Mux())
+http.ListenAndServe(":8080", nil)
+```
+
+若你的业务已经占用了根路径，可在 `Config` 里把前缀改为 `/`，再自行 `StripPrefix` 挂载到子路径（`AdminPrefix` 由你自己设定时，`StripPrefix` 的取值与之一致）：
+
+```go
+cfg := agcron.Config{AdminPrefix: "/", /* ... */}
 http.Handle("/agcron/", http.StripPrefix("/agcron", eng.Mux()))
 http.ListenAndServe(":8080", nil)
 ```

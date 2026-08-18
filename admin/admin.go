@@ -26,6 +26,7 @@ type API struct {
 	elector *elector.RedisElector
 	sched   *scheduler.Scheduler
 	log     logx.Logger
+	prefix  string // URL prefix of the admin UI/API, e.g. "/agcron"
 }
 
 // jobView enriches a JobDef with its most recent execution result.
@@ -43,19 +44,59 @@ func (a *API) withExec(ctx context.Context, d jobstore.JobDef) jobView {
 	return v
 }
 
-// New constructs the admin API. log is optional; a nil value uses the
-// logx.Default logger.
+// New constructs the admin API with the default "/agcron" URL prefix. log is
+// optional; a nil value uses the logx.Default logger.
 func New(store jobstore.Store, instID string, e *elector.RedisElector, sched *scheduler.Scheduler, log logx.Logger) *API {
-	return &API{store: store, instID: instID, elector: e, sched: sched, log: logx.With(log)}
+	return NewWithPrefix(store, instID, e, sched, "", log)
 }
 
+// NewWithPrefix is like New but mounts the admin UI/API under the given URL
+// prefix, e.g. "/agcron" serves the UI at /agcron and the API at
+// /agcron/api/*. An empty prefix uses the default "/agcron"; "/" mounts the
+// admin at the server root (the pre-prefix behaviour).
+func NewWithPrefix(store jobstore.Store, instID string, e *elector.RedisElector, sched *scheduler.Scheduler, prefix string, log logx.Logger) *API {
+	return &API{
+		store:   store,
+		instID:  instID,
+		elector: e,
+		sched:   sched,
+		log:     logx.With(log),
+		prefix:  normalizePrefix(prefix),
+	}
+}
+
+// normalizePrefix ensures the prefix has a leading "/" and no trailing "/".
+// "" falls back to "/agcron"; "/" means "no prefix" (mount at root).
+func normalizePrefix(p string) string {
+	if p == "" {
+		return "/agcron"
+	}
+	if p == "/" {
+		return ""
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	return strings.TrimSuffix(p, "/")
+}
+
+// Prefix returns the normalized URL prefix the admin UI/API is mounted under,
+// e.g. "/agcron" ("" when mounted at the root).
+func (a *API) Prefix() string { return a.prefix }
+
 func (a *API) Mux() http.Handler {
+	p := a.prefix
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/status", a.status)
-	mux.HandleFunc("/api/echo", a.echo)
-	mux.HandleFunc("/api/jobs", a.jobs)
-	mux.HandleFunc("/api/jobs/", a.jobByID)
-	mux.Handle("/", ui()) // task management UI (embedded, no external deps)
+	mux.HandleFunc(p+"/api/status", a.status)
+	mux.HandleFunc(p+"/api/echo", a.echo)
+	mux.HandleFunc(p+"/api/jobs", a.jobs)
+	mux.HandleFunc(p+"/api/jobs/", a.jobByID)
+	// task management UI (embedded, no external deps)
+	ui := http.StripPrefix(p, ui())
+	mux.Handle(p+"/", ui)
+	if p != "" {
+		mux.Handle(p, http.RedirectHandler(p+"/", http.StatusMovedPermanently))
+	}
 	return mux
 }
 
@@ -114,7 +155,7 @@ func (a *API) jobs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) jobByID(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/api/jobs/")
+	id := strings.TrimPrefix(r.URL.Path, a.prefix+"/api/jobs/")
 	jobID := strings.SplitN(id, "/", 2)[0]
 	if jobID == "" {
 		w.WriteHeader(404)

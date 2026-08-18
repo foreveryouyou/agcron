@@ -51,14 +51,15 @@ func main() {
 	}
 
 	eng, err := agcron.New(ctx, agcron.Config{
-		RedisAddr:  envOr("REDIS_ADDR", "localhost:6379"),
-		RedisPass:  envOr("REDIS_PASS", ""),
-		InstanceID: instID,
-		KeyPrefix:  envOr("KEY_PREFIX", ""), // namespaces all Redis keys; share one Redis DB safely
-		ElectorTTL: 10 * time.Second,
-		Reconcile:  5 * time.Second,
-		Store:      store, // custom store replaces the default Redis store
-		AdminAddr:  ":8081",
+		InstanceID:  instID,
+		RedisAddr:   envOr("REDIS_ADDR", "localhost:6379"),
+		RedisPass:   envOr("REDIS_PASS", ""),
+		RedisPrefix: envOr("KEY_PREFIX", ""), // namespaces all Redis keys; share one Redis DB safely
+		ElectorTTL:  10 * time.Second,
+		Reconcile:   5 * time.Second,
+		Store:       store, // custom store replaces the default Redis store
+		AdminAddr:   ":8081",
+		AdminPrefix: "/agcron",
 		Funcs: executor.FuncRegistry{
 			"sayHello": func(ctx context.Context, j jobstore.JobDef) (string, error) {
 				log.Printf("[func sayHello] job %q executed", j.Name)
