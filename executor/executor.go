@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/foreveryouyou/agcron/jobstore"
@@ -47,6 +48,19 @@ func New(store jobstore.Store, instID string, funcs FuncRegistry, log logx.Logge
 // reconciler on the next pass.
 func (e *Executor) RegisterFunc(name string, fn JobFunc) {
 	e.funcs[name] = fn
+}
+
+// FuncNames returns the names of all registered funcs, sorted alphabetically.
+// The admin UI uses it to offer a dropdown when creating/editing func-type
+// jobs. Call it after all RegisterFunc calls (i.e. after Start); like
+// RegisterFunc, it is not meant to race with concurrent registration.
+func (e *Executor) FuncNames() []string {
+	names := make([]string, 0, len(e.funcs))
+	for n := range e.funcs {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // Run is the task body bound to every job. It is invoked by gocron only on the

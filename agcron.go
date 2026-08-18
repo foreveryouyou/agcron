@@ -98,6 +98,7 @@ func New(ctx context.Context, cfg Config) (*Engine, error) {
 		return nil, fmt.Errorf("create scheduler failed: %w", err)
 	}
 	api := admin.NewWithPrefix(store, cfg.InstanceID, e, sched, cfg.AdminPrefix, lg)
+	api.SetFuncNames(exec.FuncNames)
 
 	eng := &Engine{
 		cfg:     cfg,

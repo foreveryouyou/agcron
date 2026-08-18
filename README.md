@@ -214,6 +214,7 @@ curl http://localhost:8080/agcron/api/jobs/job-http
 | -------- | ----------------------------- | -------------------------------------------------- |
 | `GET`    | `/agcron`                     | 内嵌的任务管理 Web UI（零依赖，直接浏览器访问）    |
 | `GET`    | `/agcron/api/status`          | 返回当前实例、是否 Leader、全部任务                |
+| `GET`    | `/agcron/api/funcs`           | 返回已注册 Go 函数名列表（供 func 任务下拉选择）    |
 | `GET`    | `/agcron/api/jobs`            | 列出全部任务                                       |
 | `POST`   | `/agcron/api/jobs`            | 创建 / 覆盖一个任务（body 为 `JobDef`，需含 `id`） |
 | `GET`    | `/agcron/api/jobs/{id}`       | 获取单个任务                                       |

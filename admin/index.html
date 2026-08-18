@@ -287,6 +287,7 @@
   }
   .toast.success { background: var(--green); }
   .toast.error { background: var(--red); }
+  .toast.warning { background: var(--amber); }
   .toast.out { opacity: 0; transform: translateX(12px); }
   @keyframes slideIn { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
 
@@ -363,7 +364,10 @@
         <label><input type="checkbox" id="fEnabled" checked> 启用</label>
       </div>
       <div id="funcGroup">
-        <label>函数名<input id="fFunc" placeholder="FuncRegistry 中注册的函数名"></label>
+        <label>函数名
+          <input id="fFunc" list="funcList" placeholder="选择或输入已注册的函数名">
+          <datalist id="funcList"></datalist>
+        </label>
         <label>函数参数（JSON，可选）<textarea id="fFuncParam" rows="3" placeholder='{"key": "value"}'></textarea></label>
       </div>
       <div id="httpGroup" class="hidden">
@@ -400,6 +404,7 @@ const trunc = (s, n) => (s && s.length > n ? s.slice(0, n) + '…' : s);
 
 let jobs = [];
 let editingId = null;
+let funcNames = []; // registered Go-function names, offered by the func dropdown
 
 function fmtTime(iso) {
   if (!iso) return '—';
@@ -568,6 +573,16 @@ function onToggle(ev) {
 
 /* ---------- modal ---------- */
 
+async function loadFuncList() {
+  try {
+    const d = await api('api/funcs');
+    funcNames = (d && d.funcs) || [];
+  } catch (e) {
+    funcNames = [];
+  }
+  $('#funcList').innerHTML = funcNames.map(n => `<option value="${esc(n)}">`).join('');
+}
+
 function syncType() {
   const t = $('#fType').value;
   $('#funcGroup').classList.toggle('hidden', t !== 'func');
@@ -592,6 +607,7 @@ function openModal(job) {
   $('#fBody').value = h.body || '';
   $('#fHeaders').value = h.headers && Object.keys(h.headers).length ? JSON.stringify(h.headers, null, 2) : '';
   syncType();
+  loadFuncList();
   $('#modal').classList.remove('hidden');
   $('#fName').focus();
 }
@@ -619,6 +635,9 @@ function jobFromForm() {
   if (type === 'func') {
     const fn = $('#fFunc').value.trim();
     if (!fn) throw new Error('func 任务需要填写函数名');
+    if (funcNames.length && !funcNames.includes(fn)) {
+      toast('函数名「' + fn + '」不在已注册列表中，执行可能失败', 'warning');
+    }
     job.func = fn;
     const p = $('#fFuncParam').value.trim();
     if (p) {
@@ -642,8 +661,8 @@ function jobFromForm() {
 $('#newJob').addEventListener('click', () => openModal(null));
 $('#closeModal').addEventListener('click', closeModal);
 $('#cancelBtn').addEventListener('click', closeModal);
-$('#modal').addEventListener('click', e => { if (e.target === $('#modal')) closeModal(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+//$('#modal').addEventListener('click', e => { if (e.target === $('#modal')) closeModal(); });
+//document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 $('#fType').addEventListener('change', syncType);
 
 $('#rows').addEventListener('click', onAction);

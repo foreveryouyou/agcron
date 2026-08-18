@@ -26,7 +26,8 @@ type API struct {
 	elector *elector.RedisElector
 	sched   *scheduler.Scheduler
 	log     logx.Logger
-	prefix  string // URL prefix of the admin UI/API, e.g. "/agcron"
+	prefix  string          // URL prefix of the admin UI/API, e.g. "/agcron"
+	funcs   func() []string // returns registered func names; optional, nil means "unknown"
 }
 
 // jobView enriches a JobDef with its most recent execution result.
@@ -84,11 +85,16 @@ func normalizePrefix(p string) string {
 // e.g. "/agcron" ("" when mounted at the root).
 func (a *API) Prefix() string { return a.prefix }
 
+// SetFuncNames wires up the callback that returns the registered func names,
+// so GET /api/funcs can offer them to the UI when creating func-type jobs.
+func (a *API) SetFuncNames(fn func() []string) { a.funcs = fn }
+
 func (a *API) Mux() http.Handler {
 	p := a.prefix
 	mux := http.NewServeMux()
 	mux.HandleFunc(p+"/api/status", a.status)
 	mux.HandleFunc(p+"/api/echo", a.echo)
+	mux.HandleFunc(p+"/api/funcs", a.funcsHandler)
 	mux.HandleFunc(p+"/api/jobs", a.jobs)
 	mux.HandleFunc(p+"/api/jobs/", a.jobByID)
 	// task management UI (embedded, no external deps)
@@ -119,6 +125,20 @@ func (a *API) echo(w http.ResponseWriter, r *http.Request) {
 	a.log.Infof("[echo %s] %s %s body=%s", a.instID, r.Method, r.URL.Path, string(b))
 	w.WriteHeader(200)
 	_, _ = w.Write([]byte(`{"ok":true}`))
+}
+
+// funcsHandler returns the names of all registered Go functions, sorted, so the
+// UI can render a dropdown when creating/editing func-type jobs.
+func (a *API) funcsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	names := []string{}
+	if a.funcs != nil {
+		names = a.funcs()
+	}
+	writeJSON(w, 200, map[string]any{"funcs": names})
 }
 
 func (a *API) jobs(w http.ResponseWriter, r *http.Request) {
