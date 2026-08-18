@@ -53,8 +53,8 @@ type ExecutionRecord struct {
 	FinishedAt time.Time `json:"finished_at"`           // when the run completed
 	Success    bool      `json:"success"`               // true when the run succeeded
 	Error      string    `json:"error,omitempty"`       // failure reason; empty on success
+	Result     string    `json:"result,omitempty"`      // outcome returned by a func job / HTTP response body (truncated)
 	HTTPStatus int       `json:"http_status,omitempty"` // HTTP status; 0 for func jobs
-	HTTPBody   string    `json:"http_body,omitempty"`   // HTTP response body (truncated)
 }
 
 type JobType string
@@ -65,9 +65,10 @@ const (
 )
 
 type HTTPConfig struct {
-	Method string `json:"method"`
-	URL    string `json:"url"`
-	Body   string `json:"body"`
+	Method  string            `json:"method"`
+	URL     string            `json:"url"`
+	Body    string            `json:"body"`
+	Headers map[string]string `json:"headers,omitempty"` // custom request headers
 }
 
 // JobDef is the shared, cluster-wide definition of a scheduled job.

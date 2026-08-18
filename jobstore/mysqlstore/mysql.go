@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS cron_executions (
     success      TINYINT(1)   NOT NULL DEFAULT 0,
     error        TEXT         NULL,
     http_status  INT          NOT NULL DEFAULT 0,
-    http_body    TEXT         NULL,
+    result       TEXT         NULL,
     PRIMARY KEY (job_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `
@@ -160,16 +160,16 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 func (s *Store) OnExecuted(ctx context.Context, rec jobstore.ExecutionRecord) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO cron_executions
-		 (job_id, job_name, instance, started_at, finished_at, success, error, http_status, http_body)
+		 (job_id, job_name, instance, started_at, finished_at, success, error, http_status, result)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON DUPLICATE KEY UPDATE
 		 job_name = VALUES(job_name), instance = VALUES(instance),
 		 started_at = VALUES(started_at), finished_at = VALUES(finished_at),
 		 success = VALUES(success), error = VALUES(error),
-		 http_status = VALUES(http_status), http_body = VALUES(http_body)`,
+		 http_status = VALUES(http_status), result = VALUES(result)`,
 		rec.JobID, rec.JobName, rec.Instance,
 		rec.StartedAt, rec.FinishedAt, rec.Success, nullString(rec.Error),
-		rec.HTTPStatus, nullString(rec.HTTPBody))
+		rec.HTTPStatus, nullString(rec.Result))
 	if err != nil {
 		return fmt.Errorf("mysqlstore: on_executed %q: %w", rec.JobID, err)
 	}
@@ -178,17 +178,17 @@ func (s *Store) OnExecuted(ctx context.Context, rec jobstore.ExecutionRecord) er
 
 func (s *Store) LastExecution(ctx context.Context, jobID string) (jobstore.ExecutionRecord, bool, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT job_id, job_name, instance, started_at, finished_at, success, error, http_status, http_body
+		`SELECT job_id, job_name, instance, started_at, finished_at, success, error, http_status, result
 		 FROM cron_executions WHERE job_id = ?`, jobID)
 
 	var (
 		rec     jobstore.ExecutionRecord
 		success bool
 		errStr  sql.NullString
-		bodyStr sql.NullString
+		resStr  sql.NullString
 	)
 	if err := row.Scan(&rec.JobID, &rec.JobName, &rec.Instance,
-		&rec.StartedAt, &rec.FinishedAt, &success, &errStr, &rec.HTTPStatus, &bodyStr); err != nil {
+		&rec.StartedAt, &rec.FinishedAt, &success, &errStr, &rec.HTTPStatus, &resStr); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return jobstore.ExecutionRecord{}, false, nil
 		}
@@ -196,7 +196,7 @@ func (s *Store) LastExecution(ctx context.Context, jobID string) (jobstore.Execu
 	}
 	rec.Success = success
 	rec.Error = errStr.String
-	rec.HTTPBody = bodyStr.String
+	rec.Result = resStr.String
 	return rec, true, nil
 }
 

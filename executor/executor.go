@@ -14,8 +14,10 @@ import (
 	"github.com/foreveryouyou/agcron/logx"
 )
 
-// JobFunc is a registered Go-function task.
-type JobFunc func(ctx context.Context, j jobstore.JobDef) error
+// JobFunc is a registered Go-function task. The string result is recorded in
+// the execution record (ExecutionRecord.Result) and surfaced via the admin
+// API; the error marks the run as failed.
+type JobFunc func(ctx context.Context, j jobstore.JobDef) (res string, err error)
 
 // FuncRegistry maps a func name (stored on the job) to its implementation.
 type FuncRegistry map[string]JobFunc
@@ -86,12 +88,13 @@ func (e *Executor) Run(ctx context.Context, jobID string) {
 			e.finish(rec, d, false, fmt.Errorf("func %q not registered", d.Func), 0, "")
 			return
 		}
-		if err := fn(ctx, d); err != nil {
+		res, err := fn(ctx, d)
+		if err != nil {
 			e.log.Errorf("[exec %s] func %q error: %v", e.instID, d.Func, err)
-			e.finish(rec, d, false, err, 0, "")
+			e.finish(rec, d, false, err, 0, res)
 			return
 		}
-		e.finish(rec, d, true, nil, 0, "")
+		e.finish(rec, d, true, nil, 0, res)
 	case jobstore.JobTypeHTTP:
 		status, body, err := e.doHTTP(ctx, d)
 		if err != nil {
@@ -107,14 +110,14 @@ func (e *Executor) Run(ctx context.Context, jobID string) {
 
 // finish records the outcome of a run and persists it via Store.OnExecuted.
 // Errors here are logged but never fatal to the scheduler.
-func (e *Executor) finish(rec jobstore.ExecutionRecord, d jobstore.JobDef, success bool, runErr error, httpStatus int, httpBody string) {
+func (e *Executor) finish(rec jobstore.ExecutionRecord, d jobstore.JobDef, success bool, runErr error, httpStatus int, result string) {
 	if rec.JobName == "" {
 		rec.JobName = d.Name
 	}
 	rec.FinishedAt = time.Now()
 	rec.Success = success
 	rec.HTTPStatus = httpStatus
-	rec.HTTPBody = httpBody
+	rec.Result = truncate(result)
 	if runErr != nil {
 		rec.Error = runErr.Error()
 	}
@@ -138,6 +141,9 @@ func (e *Executor) doHTTP(ctx context.Context, d jobstore.JobDef) (status int, b
 		return 0, "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	for k, v := range d.HTTP.Headers {
+		req.Header.Set(k, v)
+	}
 	resp, err := e.client.Do(req)
 	if err != nil {
 		e.log.Errorf("[exec %s] http do error: %v", e.instID, err)
@@ -145,8 +151,8 @@ func (e *Executor) doHTTP(ctx context.Context, d jobstore.JobDef) (status int, b
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
-	body = truncate(string(b))
-	e.log.Infof("[exec %s] http %s -> %d %s", e.instID, d.HTTP.URL, resp.StatusCode, body)
+	body = string(b)
+	e.log.Infof("[exec %s] http %s -> %d %s", e.instID, d.HTTP.URL, resp.StatusCode, truncate(body))
 	return resp.StatusCode, body, nil
 }
 

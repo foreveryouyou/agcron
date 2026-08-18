@@ -32,13 +32,14 @@ func main() {
 		Reconcile:  5 * time.Second,
 		AdminAddr:  ":8080",
 		Funcs: executor.FuncRegistry{
-			"sayHello": func(ctx context.Context, j jobstore.JobDef) error {
+			"sayHello": func(ctx context.Context, j jobstore.JobDef) (string, error) {
+				name, _ := j.FuncParam["name"].(string)
 				log.Printf("[func sayHello] job %q executed, param: %v", j.Name, j.FuncParam)
-				return nil
+				return "hello, " + name, nil
 			},
-			"reportStatus": func(ctx context.Context, j jobstore.JobDef) error {
+			"reportStatus": func(ctx context.Context, j jobstore.JobDef) (string, error) {
 				log.Printf("[func reportStatus] job %q executed", j.Name)
-				return nil
+				return "status ok", nil
 			},
 		},
 		Seed: exampleJobs(),

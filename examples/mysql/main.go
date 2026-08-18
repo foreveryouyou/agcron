@@ -60,9 +60,9 @@ func main() {
 		Store:      store, // custom store replaces the default Redis store
 		AdminAddr:  ":8081",
 		Funcs: executor.FuncRegistry{
-			"sayHello": func(ctx context.Context, j jobstore.JobDef) error {
+			"sayHello": func(ctx context.Context, j jobstore.JobDef) (string, error) {
 				log.Printf("[func sayHello] job %q executed", j.Name)
-				return nil
+				return "hello from mysql example", nil
 			},
 		},
 		Seed: []jobstore.JobDef{
