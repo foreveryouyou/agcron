@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agcron · 任务管理</title>
+<style>
+  :root {
+    --bg: #f4f6fb;
+    --card: #ffffff;
+    --border: #e3e8f0;
+    --text: #1f2733;
+    --muted: #8a94a6;
+    --primary: #4f6ef7;
+    --primary-dark: #3d5ae0;
+    --green: #22b07d;
+    --red: #e5484d;
+    --amber: #e8930c;
+    --purple: #8b5cf6;
+    --blue: #2563eb;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 28px;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 18px;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  header h1 .logo {
+    display: inline-block;
+    width: 22px; height: 22px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, var(--primary), #8b5cf6);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+    line-height: 22px;
+  }
+  .meta { display: flex; gap: 8px; }
+  .chip {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #eef1f8;
+    color: var(--muted);
+  }
+  .chip b { color: var(--text); font-weight: 600; }
+  .chip.leader { background: #e6f7f0; color: var(--green); font-weight: 600; }
+  .chip.follower { background: #eef1f8; color: var(--muted); font-weight: 600; }
+
+  main { max-width: 1100px; margin: 24px auto 60px; padding: 0 28px; }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .toolbar h2 { margin: 0; font-size: 16px; }
+
+  .btn {
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .btn:hover { border-color: #c9d3e6; background: #f8fafd; }
+  .btn.primary {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+  }
+  .btn.primary:hover { background: var(--primary-dark); }
+  .btn.danger { color: var(--red); }
+  .btn.danger:hover { border-color: var(--red); background: #fdf0f0; }
+  .btn.warn { color: var(--amber); }
+  .btn.warn:hover { border-color: var(--amber); background: #fdf6e8; }
+  .btn.sm { padding: 3px 9px; font-size: 12px; border-radius: 6px; }
+
+  .table-wrap {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    text-align: left;
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 600;
+    padding: 10px 14px;
+    background: #fafbfe;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  tbody td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #f0f3f9;
+    vertical-align: middle;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: #f8fafd; }
+  tr.disabled-row .job-name { opacity: .55; }
+  tr.disabled-row td { background: #fafbfd; }
+
+  .job-name { font-weight: 600; }
+  .job-id { font-size: 12px; color: var(--muted); font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .tag {
+    display: inline-block;
+    margin-left: 6px;
+    font-size: 11px;
+    color: var(--muted);
+    background: #eef1f8;
+    border-radius: 4px;
+    padding: 0 5px;
+  }
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    letter-spacing: .3px;
+  }
+  .badge.success { background: #e6f7f0; color: var(--green); }
+  .badge.fail { background: #fdecec; color: var(--red); }
+  .badge.func { background: #e8f0fe; color: var(--blue); }
+  .badge.http { background: #f3ecfe; color: var(--purple); }
+  .badge.none { background: #eef1f8; color: var(--muted); }
+  .err { font-size: 12px; color: var(--red); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .empty {
+    padding: 40px;
+    text-align: center;
+    color: var(--muted);
+    background: var(--card);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+  }
+  .hidden { display: none !important; }
+
+  /* toggle switch */
+  .switch { position: relative; display: inline-block; width: 36px; height: 20px; vertical-align: middle; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider {
+    position: absolute; inset: 0;
+    background: #d3dae6;
+    border-radius: 999px;
+    transition: background .2s;
+    cursor: pointer;
+  }
+  .slider::before {
+    content: "";
+    position: absolute;
+    width: 14px; height: 14px;
+    left: 3px; top: 3px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform .2s;
+  }
+  .switch input:checked + .slider { background: var(--green); }
+  .switch input:checked + .slider::before { transform: translateX(16px); }
+
+  /* modal */
+  .modal {
+    position: fixed; inset: 0;
+    background: rgba(20, 26, 38, .45);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 48px 16px;
+    z-index: 50;
+    overflow-y: auto;
+  }
+  .modal-box {
+    background: var(--card);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 640px;
+    padding: 22px 26px 20px;
+    box-shadow: 0 18px 50px rgba(20, 26, 38, .25);
+  }
+  .modal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .modal-head h3 { margin: 0; font-size: 16px; }
+  .x {
+    border: none; background: none; font-size: 20px; line-height: 1;
+    color: var(--muted); cursor: pointer; padding: 2px 6px;
+  }
+  .x:hover { color: var(--text); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  form label {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 10px;
+    font-weight: 500;
+  }
+  form input[type=text], form input:not([type]), form select, form textarea {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    background: #fff;
+    color: var(--text);
+    outline: none;
+  }
+  form input:focus, form select:focus, form textarea:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(79, 110, 247, .12);
+  }
+  form textarea { resize: vertical; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+  form input[readonly] { background: #f4f6fb; color: var(--muted); }
+  .checks { display: flex; gap: 22px; align-items: center; margin: 2px 0 6px; }
+  .checks label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); margin: 0; cursor: pointer; }
+  .checks input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--primary); }
+  .modal-foot {
+    display: flex; justify-content: flex-end; gap: 10px;
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid #f0f3f9;
+  }
+
+  /* toasts */
+  #toasts {
+    position: fixed; top: 16px; right: 16px;
+    z-index: 100;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .toast {
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #fff;
+    background: #2b3342;
+    box-shadow: 0 8px 24px rgba(20, 26, 38, .2);
+    max-width: 360px;
+    animation: slideIn .25s ease;
+    transition: opacity .3s, transform .3s;
+  }
+  .toast.success { background: var(--green); }
+  .toast.error { background: var(--red); }
+  .toast.out { opacity: 0; transform: translateX(12px); }
+  @keyframes slideIn { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
+
+  @media (max-width: 760px) {
+    .grid2 { grid-template-columns: 1fr; }
+    main { padding: 0 12px; }
+    header { padding: 12px 14px; }
+    thead th:nth-child(3), tbody td:nth-child(3) { display: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="logo">C</span>agcron 任务管理</h1>
+  <div class="meta">
+    <span class="chip">实例 <b id="instance">—</b></span>
+    <span class="chip follower" id="leader">—</span>
+  </div>
+</header>
+
+<main>
+  <div class="toolbar">
+    <h2>任务列表</h2>
+    <button class="btn primary" id="newJob">+ 新建任务</button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>任务</th>
+          <th>类型</th>
+          <th>调度</th>
+          <th>上次执行</th>
+          <th>启用</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <div id="empty" class="empty hidden">暂无任务，点击右上角「新建任务」创建第一个任务。</div>
+</main>
+
+<div id="modal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3 id="modalTitle">新建任务</h3>
+      <button class="x" id="closeModal" title="关闭">&times;</button>
+    </div>
+    <form id="jobForm">
+      <div class="grid2">
+        <label>任务 ID<input id="fId" placeholder="如 job-hello"></label>
+        <label>任务名称<input id="fName" placeholder="如 say-hello"></label>
+      </div>
+      <div class="grid2">
+        <label>类型
+          <select id="fType">
+            <option value="func">func（Go 函数）</option>
+            <option value="http">http（HTTP 请求）</option>
+          </select>
+        </label>
+        <label>Cron 表达式<input id="fSchedule" placeholder="*/10 * * * * *"></label>
+      </div>
+      <div class="checks">
+        <label><input type="checkbox" id="fWithSeconds" checked> 含秒（6 段 cron）</label>
+        <label><input type="checkbox" id="fEnabled" checked> 启用</label>
+      </div>
+      <div id="funcGroup">
+        <label>函数名<input id="fFunc" placeholder="FuncRegistry 中注册的函数名"></label>
+        <label>函数参数（JSON，可选）<textarea id="fFuncParam" rows="3" placeholder='{"key": "value"}'></textarea></label>
+      </div>
+      <div id="httpGroup" class="hidden">
+        <div class="grid2">
+          <label>方法
+            <select id="fMethod">
+              <option>GET</option>
+              <option selected>POST</option>
+              <option>PUT</option>
+              <option>PATCH</option>
+              <option>DELETE</option>
+            </select>
+          </label>
+          <label>URL<input id="fUrl" placeholder="http://host/path"></label>
+        </div>
+        <label>请求体（可选）<textarea id="fBody" rows="2" placeholder='{"from":"agcron"}'></textarea></label>
+        <label>请求头（JSON，可选）<textarea id="fHeaders" rows="2" placeholder='{"Authorization": "Bearer xxx"}'></textarea></label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" id="cancelBtn">取消</button>
+        <button type="submit" class="btn primary">保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const trunc = (s, n) => (s && s.length > n ? s.slice(0, n) + '…' : s);
+
+let jobs = [];
+let editingId = null;
+
+function fmtTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return isNaN(d) ? '—' : d.toLocaleString();
+}
+
+function badge(cls, text) { return `<span class="badge ${cls}">${esc(text)}</span>`; }
+
+async function api(path, method = 'GET', body) {
+  const opts = { method, headers: {} };
+  if (body !== undefined) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(path, opts);
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* non-JSON response */ }
+  if (!res.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+  return data;
+}
+
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  $('#toasts').appendChild(el);
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 320); }, 3200);
+}
+
+/* ---------- render ---------- */
+
+function lastCell(ex) {
+  if (!ex) return '<span class="muted">—</span>';
+  const ok = !!ex.success;
+  let html = badge(ok ? 'success' : 'fail', ok ? '成功' : '失败');
+  html += ' <span class="muted">' + esc(fmtTime(ex.finished_at)) + '</span>';
+  if (!ok && ex.error) html += '<div class="err" title="' + esc(ex.error) + '">' + esc(trunc(ex.error, 40)) + '</div>';
+  return html;
+}
+
+function typeCell(j) {
+  if (j.type === 'func') return badge('func', 'FUNC') + ' <span class="muted">' + esc(j.func || '') + '</span>';
+  if (j.type === 'http') {
+    const m = (j.http && j.http.method) || 'POST';
+    return badge('http', 'HTTP') + ' <span class="muted">' + esc(m + ' ' + trunc((j.http && j.http.url) || '', 26)) + '</span>';
+  }
+  return badge('none', j.type || '?');
+}
+
+function actionsCell(j) {
+  const id = esc(j.id);
+  return '<div class="actions">'
+    + '<button class="btn sm" data-action="run" data-id="' + id + '" title="立即执行一次">执行</button>'
+    + '<button class="btn sm" data-action="edit" data-id="' + id + '">编辑</button>'
+    + '<button class="btn sm danger" data-action="delete" data-id="' + id + '">删除</button>'
+    + '</div>';
+}
+
+function row(j) {
+  return '<tr class="' + (j.enabled ? '' : 'disabled-row') + '">'
+    + '<td><div class="job-name">' + esc(j.name) + '</div><div class="job-id">' + esc(j.id) + '</div></td>'
+    + '<td>' + typeCell(j) + '</td>'
+    + '<td>' + esc(j.schedule) + (j.withSeconds ? '<span class="tag">含秒</span>' : '') + '</td>'
+    + '<td>' + lastCell(j.last_execution) + '</td>'
+    + '<td><label class="switch"><input type="checkbox" data-action="toggle" data-id="' + esc(j.id) + '"'
+    + (j.enabled ? ' checked' : '') + '><span class="slider"></span></label></td>'
+    + '<td>' + actionsCell(j) + '</td>'
+    + '</tr>';
+}
+
+function render() {
+  const tbody = $('#rows');
+  if (!jobs.length) {
+    $('#empty').classList.remove('hidden');
+    tbody.innerHTML = '';
+    return;
+  }
+  $('#empty').classList.add('hidden');
+  jobs.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  tbody.innerHTML = jobs.map(row).join('');
+}
+
+async function refresh() {
+  try {
+    const s = await api('/api/status');
+    $('#instance').textContent = s.instance_id || '—';
+    const leader = $('#leader');
+    leader.textContent = s.is_leader ? 'LEADER' : 'FOLLOWER';
+    leader.className = 'chip ' + (s.is_leader ? 'leader' : 'follower');
+    jobs = Object.values(s.jobs || {});
+    render();
+  } catch (e) {
+    toast('状态刷新失败：' + e.message, 'error');
+  }
+}
+
+/* ---------- actions ---------- */
+
+async function onAction(ev) {
+  const btn = ev.target.closest('button[data-action]');
+  if (!btn) return;
+  const id = btn.dataset.id;
+  const action = btn.dataset.action;
+  try {
+    if (action === 'run') {
+      await api('/api/jobs/' + encodeURIComponent(id) + '/run', 'POST');
+      toast('已触发任务「' + id + '」执行');
+    } else if (action === 'edit') {
+      openModal(jobs.find(j => j.id === id));
+      return;
+    } else if (action === 'delete') {
+      if (!confirm('确定删除任务「' + id + '」？')) return;
+      await api('/api/jobs/' + encodeURIComponent(id), 'DELETE');
+      toast('任务「' + id + '」已删除', 'success');
+    }
+    refresh();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function onToggle(ev) {
+  const input = ev.target;
+  if (input.dataset.action !== 'toggle') return;
+  const id = input.dataset.id;
+  const enable = input.checked;
+  if (!enable && !confirm('确定暂停任务「' + id + '」？')) {
+    input.checked = true;
+    return;
+  }
+  api('/api/jobs/' + encodeURIComponent(id) + (enable ? '/resume' : '/pause'), 'POST')
+    .then(() => { toast('任务「' + id + '」' + (enable ? '已恢复' : '已暂停'), 'success'); refresh(); })
+    .catch(e => { toast(e.message, 'error'); input.checked = !enable; });
+}
+
+/* ---------- modal ---------- */
+
+function syncType() {
+  const t = $('#fType').value;
+  $('#funcGroup').classList.toggle('hidden', t !== 'func');
+  $('#httpGroup').classList.toggle('hidden', t !== 'http');
+}
+
+function openModal(job) {
+  editingId = job ? job.id : null;
+  $('#modalTitle').textContent = job ? '编辑任务' : '新建任务';
+  $('#fId').value = job ? job.id : '';
+  $('#fId').readOnly = !!job;
+  $('#fName').value = job ? job.name : '';
+  $('#fType').value = job ? job.type : 'func';
+  $('#fSchedule').value = job ? job.schedule : '*/10 * * * * *';
+  $('#fWithSeconds').checked = job ? job.withSeconds : true;
+  $('#fEnabled').checked = job ? job.enabled : true;
+  $('#fFunc').value = job ? (job.func || '') : '';
+  $('#fFuncParam').value = job && job.funcParam ? JSON.stringify(job.funcParam, null, 2) : '';
+  const h = (job && job.http) || {};
+  $('#fMethod').value = h.method || 'POST';
+  $('#fUrl').value = h.url || '';
+  $('#fBody').value = h.body || '';
+  $('#fHeaders').value = h.headers && Object.keys(h.headers).length ? JSON.stringify(h.headers, null, 2) : '';
+  syncType();
+  $('#modal').classList.remove('hidden');
+  $('#fName').focus();
+}
+
+function closeModal() {
+  $('#modal').classList.add('hidden');
+}
+
+function jobFromForm() {
+  const id = $('#fId').value.trim();
+  const name = $('#fName').value.trim();
+  const schedule = $('#fSchedule').value.trim();
+  const type = $('#fType').value;
+  if (!id) throw new Error('任务 ID 必填');
+  if (!name) throw new Error('任务名称必填');
+  if (!schedule) throw new Error('Cron 表达式必填');
+  const job = {
+    id: id,
+    name: name,
+    type: type,
+    schedule: schedule,
+    withSeconds: $('#fWithSeconds').checked,
+    enabled: $('#fEnabled').checked
+  };
+  if (type === 'func') {
+    const fn = $('#fFunc').value.trim();
+    if (!fn) throw new Error('func 任务需要填写函数名');
+    job.func = fn;
+    const p = $('#fFuncParam').value.trim();
+    if (p) {
+      try { job.funcParam = JSON.parse(p); } catch (e) { throw new Error('函数参数不是合法 JSON'); }
+    }
+  } else {
+    const url = $('#fUrl').value.trim();
+    if (!url) throw new Error('http 任务需要填写 URL');
+    const headers = {};
+    const h = $('#fHeaders').value.trim();
+    if (h) {
+      try { Object.assign(headers, JSON.parse(h)); } catch (e) { throw new Error('请求头不是合法 JSON'); }
+    }
+    job.http = { method: $('#fMethod').value, url: url, body: $('#fBody').value, headers: headers };
+  }
+  return job;
+}
+
+/* ---------- wire up ---------- */
+
+$('#newJob').addEventListener('click', () => openModal(null));
+$('#closeModal').addEventListener('click', closeModal);
+$('#cancelBtn').addEventListener('click', closeModal);
+$('#modal').addEventListener('click', e => { if (e.target === $('#modal')) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+$('#fType').addEventListener('change', syncType);
+
+$('#rows').addEventListener('click', onAction);
+$('#rows').addEventListener('change', onToggle);
+
+$('#jobForm').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  let job;
+  try { job = jobFromForm(); } catch (e) { toast(e.message, 'error'); return; }
+  try {
+    const saved = await api('/api/jobs', 'POST', job);
+    closeModal();
+    toast('任务「' + (saved.name || saved.id) + '」已保存', 'success');
+    refresh();
+  } catch (e) {
+    toast('保存失败：' + e.message, 'error');
+  }
+});
+
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>

@@ -136,6 +136,17 @@ func (s *Scheduler) add(id string, d jobstore.JobDef) {
 	s.log.Infof("[reconcile] added job %q (%s, seconds=%v) -> %s", d.Name, d.Schedule, d.WithSeconds, job.ID())
 }
 
+// RunNow triggers an immediate execution of the job on the instance receiving
+// the request, outside its regular schedule. It is used by the admin API for
+// manual runs and returns false when the job does not exist in the store.
+func (s *Scheduler) RunNow(ctx context.Context, id string) bool {
+	if _, ok, err := s.store.Get(ctx, id); err != nil || !ok {
+		return false
+	}
+	s.exec.Run(ctx, id)
+	return true
+}
+
 func (s *Scheduler) Stop() {
 	close(s.stopCh)
 	s.wg.Wait()

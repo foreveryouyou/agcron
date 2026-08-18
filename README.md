@@ -211,6 +211,7 @@ curl http://localhost:8080/api/jobs/job-http
 
 | 方法     | 路径                   | 说明                                               |
 | -------- | ---------------------- | -------------------------------------------------- |
+| `GET`    | `/`                    | 内嵌的任务管理 Web UI（零依赖，直接浏览器访问）    |
 | `GET`    | `/api/status`          | 返回当前实例、是否 Leader、全部任务                |
 | `GET`    | `/api/jobs`            | 列出全部任务                                       |
 | `POST`   | `/api/jobs`            | 创建 / 覆盖一个任务（body 为 `JobDef`，需含 `id`） |
@@ -218,6 +219,7 @@ curl http://localhost:8080/api/jobs/job-http
 | `DELETE` | `/api/jobs/{id}`       | 删除任务                                           |
 | `POST`   | `/api/jobs/{id}/pause` | 暂停任务（`Enabled=false`）                        |
 | `POST`   | `/api/jobs/{id}/resume`| 恢复任务（`Enabled=true`）                         |
+| `POST`   | `/api/jobs/{id}/run`   | 立即执行一次任务（在收到请求的实例上触发）         |
 | `POST`   | `/api/echo`            | 示例 HTTP 任务的自带回显目标                       |
 
 > 任意实例收到写入请求后写入共享存储，reconciler 会在各实例上周期对齐，因此**单机写入即可收敛整个集群**。

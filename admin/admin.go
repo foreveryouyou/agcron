@@ -55,6 +55,7 @@ func (a *API) Mux() http.Handler {
 	mux.HandleFunc("/api/echo", a.echo)
 	mux.HandleFunc("/api/jobs", a.jobs)
 	mux.HandleFunc("/api/jobs/", a.jobByID)
+	mux.Handle("/", ui()) // task management UI (embedded, no external deps)
 	return mux
 }
 
@@ -124,6 +125,16 @@ func (a *API) jobByID(w http.ResponseWriter, r *http.Request) {
 		a.setEnabled(w, r, jobID, false)
 	case strings.HasSuffix(r.URL.Path, "/resume"):
 		a.setEnabled(w, r, jobID, true)
+	case strings.HasSuffix(r.URL.Path, "/run"):
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if !a.sched.RunNow(r.Context(), jobID) {
+			writeJSON(w, 404, map[string]string{"error": "job not found"})
+			return
+		}
+		writeJSON(w, 200, map[string]string{"ok": "true", "job_id": jobID, "triggered_on": a.instID})
 	case r.Method == http.MethodDelete:
 		if err := a.store.Delete(r.Context(), jobID); err != nil {
 			writeJSON(w, 500, map[string]string{"error": err.Error()})
