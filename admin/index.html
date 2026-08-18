@@ -70,7 +70,7 @@
   .chip.leader { background: #e6f7f0; color: var(--green); font-weight: 600; }
   .chip.follower { background: #eef1f8; color: var(--muted); font-weight: 600; }
 
-  main { max-width: 1100px; margin: 24px auto 60px; padding: 0 28px; }
+  main { max-width: 1200px; margin: 24px auto 60px; padding: 0 28px; }
   .toolbar {
     display: flex;
     align-items: center;
@@ -78,6 +78,9 @@
     margin-bottom: 14px;
   }
   .toolbar h2 { margin: 0; font-size: 16px; }
+  .toolbar-right { display: flex; align-items: center; gap: 14px; }
+  .auto-refresh { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+  .auto-refresh .muted { font-size: 13px; }
 
   .btn {
     border: 1px solid var(--border);
@@ -155,6 +158,17 @@
   .badge.http { background: #f3ecfe; color: var(--purple); }
   .badge.none { background: #eef1f8; color: var(--muted); }
   .err { font-size: 12px; color: var(--red); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .result-text {
+    display: inline-block;
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
 
   .actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
@@ -296,7 +310,13 @@
 <main>
   <div class="toolbar">
     <h2>任务列表</h2>
-    <button class="btn primary" id="newJob">+ 新建任务</button>
+    <div class="toolbar-right">
+      <span class="auto-refresh">
+        <label class="switch"><input type="checkbox" id="autoRefresh" checked><span class="slider"></span></label>
+        <span class="muted">自动刷新</span>
+      </span>
+      <button class="btn primary" id="newJob">+ 新建任务</button>
+    </div>
   </div>
 
   <div class="table-wrap">
@@ -307,6 +327,7 @@
           <th>类型</th>
           <th>调度</th>
           <th>上次执行</th>
+          <th>结果</th>
           <th>启用</th>
           <th>操作</th>
         </tr>
@@ -411,13 +432,41 @@ function toast(msg, type = 'info') {
 
 /* ---------- render ---------- */
 
+function execTitle(ex) {
+  const lines = [];
+  if (ex.started_at) lines.push('开始: ' + ex.started_at);
+  if (ex.finished_at) lines.push('结束: ' + ex.finished_at);
+  if (ex.instance) lines.push('实例: ' + ex.instance);
+  lines.push('结果: ' + (ex.success ? '成功' : '失败'));
+  if (ex.http_status) lines.push('HTTP 状态: ' + ex.http_status);
+  if (ex.error) lines.push('错误: ' + ex.error);
+  if (ex.result && ex.result.trim()) lines.push('返回内容: ' + ex.result);
+  return lines.join('\n');
+}
+
 function lastCell(ex) {
   if (!ex) return '<span class="muted">—</span>';
   const ok = !!ex.success;
-  let html = badge(ok ? 'success' : 'fail', ok ? '成功' : '失败');
+  const t = ' title="' + esc(execTitle(ex)) + '"';
+  let html = '<span' + t + '>' + badge(ok ? 'success' : 'fail', ok ? '成功' : '失败') + '</span>';
   html += ' <span class="muted">' + esc(fmtTime(ex.finished_at)) + '</span>';
   if (!ok && ex.error) html += '<div class="err" title="' + esc(ex.error) + '">' + esc(trunc(ex.error, 40)) + '</div>';
   return html;
+}
+
+function resultCell(ex) {
+  if (!ex) return '<span class="muted">—</span>';
+  const ok = !!ex.success;
+  const t = ' title="' + esc(execTitle(ex)) + '"';
+  const parts = [];
+  if (ex.http_status) parts.push('<span class="badge http">HTTP ' + esc(ex.http_status) + '</span>');
+  if (ex.result && ex.result.trim()) {
+    parts.push('<span class="result-text"' + t + '>' + esc(trunc(ex.result, 80)) + '</span>');
+  } else if (!ok && ex.error) {
+    parts.push('<span class="err"' + t + '>' + esc(trunc(ex.error, 40)) + '</span>');
+  }
+  if (!parts.length) return '<span class="muted">—</span>';
+  return parts.join(' ');
 }
 
 function typeCell(j) {
@@ -444,6 +493,7 @@ function row(j) {
     + '<td>' + typeCell(j) + '</td>'
     + '<td>' + esc(j.schedule) + (j.withSeconds ? '<span class="tag">含秒</span>' : '') + '</td>'
     + '<td>' + lastCell(j.last_execution) + '</td>'
+    + '<td>' + resultCell(j.last_execution) + '</td>'
     + '<td><label class="switch"><input type="checkbox" data-action="toggle" data-id="' + esc(j.id) + '"'
     + (j.enabled ? ' checked' : '') + '><span class="slider"></span></label></td>'
     + '<td>' + actionsCell(j) + '</td>'
@@ -613,8 +663,30 @@ $('#jobForm').addEventListener('submit', async ev => {
   }
 });
 
+let refreshTimer = null;
+
+function startAutoRefresh() {
+  if (refreshTimer) return;
+  refreshTimer = setInterval(refresh, 3000);
+}
+
+function stopAutoRefresh() {
+  if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+}
+
+$('#autoRefresh').addEventListener('change', e => {
+  if (e.target.checked) {
+    startAutoRefresh();
+    refresh();
+    toast('已开启自动刷新', 'success');
+  } else {
+    stopAutoRefresh();
+    toast('已暂停自动刷新');
+  }
+});
+
 refresh();
-setInterval(refresh, 3000);
+startAutoRefresh();
 </script>
 </body>
 </html>
