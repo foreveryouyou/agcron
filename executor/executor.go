@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/foreveryouyou/agcron/jobstore"
@@ -26,6 +27,7 @@ type FuncRegistry map[string]JobFunc
 type Executor struct {
 	store  jobstore.Store
 	funcs  FuncRegistry
+	mu     sync.RWMutex // guards funcs against concurrent registration
 	instID string
 	client *http.Client
 	log    logx.Logger
@@ -44,17 +46,21 @@ func New(store jobstore.Store, instID string, funcs FuncRegistry, log logx.Logge
 }
 
 // RegisterFunc registers (or replaces) a Go function task by name. It is safe
-// to call before Start; jobs referencing this name are picked up by the
-// reconciler on the next pass.
+// to call at any time, including at runtime: the registry is guarded by a
+// RWMutex, and jobs referencing this name are picked up by the reconciler on
+// the next pass.
 func (e *Executor) RegisterFunc(name string, fn JobFunc) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	e.funcs[name] = fn
 }
 
 // FuncNames returns the names of all registered funcs, sorted alphabetically.
 // The admin UI uses it to offer a dropdown when creating/editing func-type
-// jobs. Call it after all RegisterFunc calls (i.e. after Start); like
-// RegisterFunc, it is not meant to race with concurrent registration.
+// jobs. It is safe to call concurrently with RegisterFunc.
 func (e *Executor) FuncNames() []string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
 	names := make([]string, 0, len(e.funcs))
 	for n := range e.funcs {
 		names = append(names, n)
@@ -107,7 +113,9 @@ func (e *Executor) run(ctx context.Context, jobID string, force bool) {
 	e.log.Infof("[exec %s] >>> running job %q (type=%s)", e.instID, d.Name, d.Type)
 	switch d.Type {
 	case jobstore.JobTypeFunc:
+		e.mu.RLock()
 		fn, found := e.funcs[d.Func]
+		e.mu.RUnlock() // release before running user code, so fn never runs under the lock
 		if !found {
 			e.log.Errorf("[exec %s] func %q not registered", e.instID, d.Func)
 			e.finish(rec, d, false, fmt.Errorf("func %q not registered", d.Func), 0, "")
