@@ -51,10 +51,10 @@ func New(store jobstore.Store, instID string, e *elector.RedisElector, sched *sc
 
 func (a *API) Mux() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/status", a.status)
-	mux.HandleFunc("/echo", a.echo)
-	mux.HandleFunc("/jobs", a.jobs)
-	mux.HandleFunc("/jobs/", a.jobByID)
+	mux.HandleFunc("/api/status", a.status)
+	mux.HandleFunc("/api/echo", a.echo)
+	mux.HandleFunc("/api/jobs", a.jobs)
+	mux.HandleFunc("/api/jobs/", a.jobByID)
 	return mux
 }
 
@@ -113,7 +113,7 @@ func (a *API) jobs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) jobByID(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/jobs/")
+	id := strings.TrimPrefix(r.URL.Path, "/api/jobs/")
 	jobID := strings.SplitN(id, "/", 2)[0]
 	if jobID == "" {
 		w.WriteHeader(404)

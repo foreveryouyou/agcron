@@ -84,7 +84,7 @@ func exampleJobs() []jobstore.JobDef {
 			Schedule:    "*/15 * * * * *",
 			WithSeconds: true,
 			Enabled:     true,
-			HTTP:        jobstore.HTTPConfig{Method: "POST", URL: "http://localhost:8080/echo", Body: `{"from":"agcron"}`},
+			HTTP:        jobstore.HTTPConfig{Method: "POST", URL: "http://localhost:8080/api/echo", Body: `{"from":"agcron"}`},
 		},
 	}
 }

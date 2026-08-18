@@ -158,7 +158,7 @@ jobstore.JobDef{
 	Enabled: true,
 	HTTP: jobstore.HTTPConfig{
 		Method: "POST",
-		URL:    "http://localhost:8080/echo",
+		URL:    "http://localhost:8080/api/echo",
 		Body:   `{"from":"agcron"}`,
 	},
 }
@@ -196,10 +196,10 @@ LastExecution(ctx context.Context, jobID string) (ExecutionRecord, bool, error)
 - **Redis 存储**：使用独立 hash key `cron:executions`，按 `JobID` 覆盖。
 - **MySQL 存储**：使用独立表 `cron_executions`，随 `Migrate` 自动创建；该表与 `cron_jobs` 解耦，不影响既有 job 表结构。
 
-Admin API 的 `/status`、`/jobs`、`/jobs/{id}` 会在每个任务对象中附带 `last_execution` 字段（无记录时省略）。例如：
+Admin API 的 `/api/status`、`/api/jobs`、`/api/jobs/{id}` 会在每个任务对象中附带 `last_execution` 字段（无记录时省略）。例如：
 
 ```bash
-curl http://localhost:8080/jobs/job-http
+curl http://localhost:8080/api/jobs/job-http
 # => {"id":"job-http","name":"ping-echo",...,"last_execution":{"job_id":"job-http","success":true,"http_status":200,"http_body":"{\"ok\":true}","finished_at":"..."}}
 ```
 
@@ -207,18 +207,18 @@ curl http://localhost:8080/jobs/job-http
 
 ## Admin HTTP API
 
-当 `Config.AdminAddr` 非空时，自动暴露以下端点：
+当 `Config.AdminAddr` 非空时，自动暴露以下端点（所有路径以 `/api` 为统一前缀）：
 
-| 方法     | 路径                | 说明                                               |
-| -------- | ------------------- | -------------------------------------------------- |
-| `GET`    | `/status`           | 返回当前实例、是否 Leader、全部任务                |
-| `GET`    | `/jobs`             | 列出全部任务                                       |
-| `POST`   | `/jobs`             | 创建 / 覆盖一个任务（body 为 `JobDef`，需含 `id`） |
-| `GET`    | `/jobs/{id}`        | 获取单个任务                                       |
-| `DELETE` | `/jobs/{id}`        | 删除任务                                           |
-| `POST`   | `/jobs/{id}/pause`  | 暂停任务（`Enabled=false`）                        |
-| `POST`   | `/jobs/{id}/resume` | 恢复任务（`Enabled=true`）                         |
-| `POST`   | `/echo`             | 示例 HTTP 任务的自带回显目标                       |
+| 方法     | 路径                   | 说明                                               |
+| -------- | ---------------------- | -------------------------------------------------- |
+| `GET`    | `/api/status`          | 返回当前实例、是否 Leader、全部任务                |
+| `GET`    | `/api/jobs`            | 列出全部任务                                       |
+| `POST`   | `/api/jobs`            | 创建 / 覆盖一个任务（body 为 `JobDef`，需含 `id`） |
+| `GET`    | `/api/jobs/{id}`       | 获取单个任务                                       |
+| `DELETE` | `/api/jobs/{id}`       | 删除任务                                           |
+| `POST`   | `/api/jobs/{id}/pause` | 暂停任务（`Enabled=false`）                        |
+| `POST`   | `/api/jobs/{id}/resume`| 恢复任务（`Enabled=true`）                         |
+| `POST`   | `/api/echo`            | 示例 HTTP 任务的自带回显目标                       |
 
 > 任意实例收到写入请求后写入共享存储，reconciler 会在各实例上周期对齐，因此**单机写入即可收敛整个集群**。
 
@@ -226,18 +226,18 @@ curl http://localhost:8080/jobs/job-http
 
 ```bash
 # 查看状态
-curl http://localhost:8080/status
+curl http://localhost:8080/api/status
 
 # 新增一个任务
-curl -X POST http://localhost:8080/jobs \
+curl -X POST http://localhost:8080/api/jobs \
   -H 'Content-Type: application/json' \
   -d '{"id":"job-x","name":"demo","type":"func","schedule":"*/10 * * * * *","with_seconds":true,"enabled":true,"func":"sayHello"}'
 
 # 暂停任务
-curl -X POST http://localhost:8080/jobs/job-x/pause
+curl -X POST http://localhost:8080/api/jobs/job-x/pause
 ```
 
-也可以把 Admin 挂载到自己的 HTTP server：
+也可以把 Admin 挂载到自己的 HTTP server（Mux 内路径已含 `/api` 前缀，挂载后实际访问为 `/agcron/api/...`）：
 
 ```go
 http.Handle("/agcron/", http.StripPrefix("/agcron", eng.Mux()))
