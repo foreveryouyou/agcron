@@ -182,10 +182,10 @@ func (s *Store) LastExecution(ctx context.Context, jobID string) (jobstore.Execu
 		 FROM cron_executions WHERE job_id = ?`, jobID)
 
 	var (
-		rec      jobstore.ExecutionRecord
-		success  bool
-		errStr   sql.NullString
-		bodyStr  sql.NullString
+		rec     jobstore.ExecutionRecord
+		success bool
+		errStr  sql.NullString
+		bodyStr sql.NullString
 	)
 	if err := row.Scan(&rec.JobID, &rec.JobName, &rec.Instance,
 		&rec.StartedAt, &rec.FinishedAt, &success, &errStr, &rec.HTTPStatus, &bodyStr); err != nil {

@@ -33,7 +33,7 @@ func main() {
 		AdminAddr:  ":8080",
 		Funcs: executor.FuncRegistry{
 			"sayHello": func(ctx context.Context, j jobstore.JobDef) error {
-				log.Printf("[func sayHello] job %q executed", j.Name)
+				log.Printf("[func sayHello] job %q executed, param: %v", j.Name, j.FuncParam)
 				return nil
 			},
 			"reportStatus": func(ctx context.Context, j jobstore.JobDef) error {

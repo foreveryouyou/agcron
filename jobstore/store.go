@@ -19,6 +19,8 @@ import (
 // failures in a scan-like context.
 var ErrNotFound = errors.New("jobstore: not found")
 
+type Map = map[string]any
+
 // Store is the persistence interface used by the scheduler, executor and admin
 // layers. Implementations must be safe for concurrent use from multiple
 // goroutines and instances.
@@ -44,13 +46,13 @@ type Store interface {
 // the executor via Store.OnExecuted and can be retrieved through
 // Store.LastExecution or the admin API. Only the latest record per job is kept.
 type ExecutionRecord struct {
-	JobID      string    `json:"job_id"`      // matches JobDef.ID
-	JobName    string    `json:"job_name"`    // denormalized for display
-	Instance   string    `json:"instance"`    // instanceID that ran the job (the leader)
-	StartedAt  time.Time `json:"started_at"`  // when the run began
-	FinishedAt time.Time `json:"finished_at"` // when the run completed
-	Success    bool      `json:"success"`     // true when the run succeeded
-	Error      string    `json:"error,omitempty"`   // failure reason; empty on success
+	JobID      string    `json:"job_id"`                // matches JobDef.ID
+	JobName    string    `json:"job_name"`              // denormalized for display
+	Instance   string    `json:"instance"`              // instanceID that ran the job (the leader)
+	StartedAt  time.Time `json:"started_at"`            // when the run began
+	FinishedAt time.Time `json:"finished_at"`           // when the run completed
+	Success    bool      `json:"success"`               // true when the run succeeded
+	Error      string    `json:"error,omitempty"`       // failure reason; empty on success
 	HTTPStatus int       `json:"http_status,omitempty"` // HTTP status; 0 for func jobs
 	HTTPBody   string    `json:"http_body,omitempty"`   // HTTP response body (truncated)
 }
@@ -72,13 +74,14 @@ type HTTPConfig struct {
 // It lives in the store so every instance converges to the same set.
 type JobDef struct {
 	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	Type        JobType    `json:"type"` // "func" or "http"
-	Schedule    string     `json:"schedule"`
-	WithSeconds bool       `json:"with_seconds"` // true => 6-field cron (with seconds)
-	Enabled     bool       `json:"enabled"`
-	Func        string     `json:"func,omitempty"` // used when Type == "func"
-	HTTP        HTTPConfig `json:"http"`           // used when Type == "http"
+	Name        string     `json:"name"`                // task name
+	Type        JobType    `json:"type"`                // "func" or "http"
+	Schedule    string     `json:"schedule"`            // cron expression
+	WithSeconds bool       `json:"withSeconds"`         // true => 6-field cron (with seconds)
+	Enabled     bool       `json:"enabled"`             //
+	Func        string     `json:"func,omitempty"`      // used when Type == "func"
+	FuncParam   Map        `json:"funcParam,omitempty"` // per-job params passed to the func task
+	HTTP        HTTPConfig `json:"http"`                // used when Type == "http"
 }
 
 // RedisStore is the default, Redis-backed implementation of Store.
