@@ -256,6 +256,51 @@ http.Handle("/agcron/", http.StripPrefix("/agcron", eng.Mux()))
 http.ListenAndServe(":8080", nil)
 ```
 
+### 集成到 GoFrame v2
+
+`Mux()` 返回的是标准库 `http.Handler`（内部为 `http.ServeMux`，路由已含 `/agcron` 前缀），用 GoFrame 官方的 `ghttp.WrapH` 适配器即可直接挂载，无需修改 agcron 任何代码：
+
+```go
+package main
+
+import (
+	"context"
+	"log"
+
+	"github.com/foreveryouyou/agcron"
+	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/net/ghttp"
+)
+
+func main() {
+	eng, err := agcron.New(context.Background(), agcron.Config{
+		RedisAddr:   "localhost:6379",
+		InstanceID:  "gf-node-1",
+		AdminPrefix: "/agcron", // 必须与下面 GoFrame 挂载路径一致
+		// 注意:不要设置 AdminAddr,否则 agcron 会自己起一个 http server
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	eng.Start()
+	defer eng.Stop()
+
+	s := g.Server()
+	// Mux() 内部已按 "/agcron" 前缀注册完整路径路由,
+	// 所以这里直接透传完整 URL.Path,不要再 http.StripPrefix。
+	s.BindHandler("/agcron", ghttp.WrapH(eng.Mux()))
+	s.BindHandler("/agcron/*any", ghttp.WrapH(eng.Mux()))
+	s.Run()
+}
+```
+
+要点：
+
+- **`ghttp.WrapH` 是 GoFrame 适配标准 handler 的官方入口**，`http.ResponseWriter` / `*http.Request` 原样透传。
+- **不要 `http.StripPrefix`**：`Mux()` 内部已按 `AdminPrefix` 拼好完整路径路由（`/agcron/api/*`、`/agcron/`），`http.ServeMux` 按完整路径匹配，GoFrame 侧透传即可；再 Strip 一层反而会 404。
+- **`*any` 是 GoFrame 的模糊匹配规则**（类似 `(.*)`，可匹配任意层级且层级可为空），保证 `/agcron`、`/agcron/`、`/agcron/api/jobs/xxx/run` 全部命中；再注册一个 `/agcron` 精确路由做兜底。
+- 若把 `AdminPrefix` 设为 `/`（根挂载），则需绑定 `/*any`，会抢占所有未匹配路由、与 GoFrame 自身路由冲突，**建议始终使用子路径前缀**。
+
 ## 自定义存储（MySQL 示例）
 
 `jobstore.Store` 是接口，默认实现为 Redis。你也可以替换为其他后端——例如内置的 MySQL 实现：
