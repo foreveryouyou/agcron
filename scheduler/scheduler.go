@@ -118,6 +118,17 @@ func (s *Scheduler) reconcile() {
 	}
 }
 
+// ValidateSchedule reports whether the given cron expression can be parsed by
+// the same cron implementation used when a job is added to the scheduler
+// (gocron.NewDefaultCron). It is meant to be called by the admin API before
+// writing a job to the store, so an invalid crontab is rejected up front
+// instead of surfacing later as a "[reconcile] add job ... crontab parse
+// failure". The check uses the process's local timezone, matching the
+// Scheduler's default location.
+func ValidateSchedule(schedule string, withSeconds bool) error {
+	return gocron.NewDefaultCron(withSeconds).IsValid(schedule, time.Local, time.Now())
+}
+
 func (s *Scheduler) add(id string, d jobstore.JobDef) {
 	task := gocron.NewTask(func() {
 		s.exec.Run(context.Background(), id)

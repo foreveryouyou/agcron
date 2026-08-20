@@ -170,6 +170,10 @@ func (a *API) jobs(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 400, map[string]string{"error": "id required"})
 			return
 		}
+		if err := scheduler.ValidateSchedule(d.Schedule, d.WithSeconds); err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
 		if _, ok, err := a.store.Get(r.Context(), d.ID); err != nil {
 			writeJSON(w, 500, map[string]string{"error": err.Error()})
 			return
@@ -218,6 +222,10 @@ func (a *API) jobByID(w http.ResponseWriter, r *http.Request) {
 		}
 		if d.ID != jobID {
 			writeJSON(w, 400, map[string]string{"error": "id mismatch: path id and body id differ"})
+			return
+		}
+		if err := scheduler.ValidateSchedule(d.Schedule, d.WithSeconds); err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
 		}
 		if _, ok, err := a.store.Get(r.Context(), jobID); err != nil {
