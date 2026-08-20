@@ -87,5 +87,19 @@ func exampleJobs() []jobstore.JobDef {
 			Enabled:     true,
 			HTTP:        jobstore.HTTPConfig{Method: "POST", URL: "http://localhost:8080/api/echo", Body: `{"from":"agcron"}`},
 		},
+		{
+			ID:          "job-shell",
+			Name:        "disk-usage",
+			Type:        jobstore.JobTypeShell,
+			Schedule:    "*/20 * * * * *",
+			WithSeconds: true,
+			Enabled:     true,
+			Shell: jobstore.ShellConfig{
+				Command:    `echo "$(date '+%F %T') disk usage:" && df -h | tail -1`,
+				WorkingDir: "/tmp",
+				Timeout:    5,
+				Env:        map[string]string{"AGCRON_JOB": "disk-usage"},
+			},
+		},
 	}
 }

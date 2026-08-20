@@ -117,6 +117,7 @@
   .badge.fail { background: #fdecec; color: var(--red); }
   .badge.func { background: #e8f0fe; color: var(--blue); }
   .badge.http { background: #f3ecfe; color: var(--purple); }
+  .badge.shell { background: #e0f7f4; color: #0d9488; }
   .badge.none { background: #eef1f8; color: var(--muted); }
   .err { font-size: 12px; color: var(--red); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .result-text {
@@ -200,7 +201,7 @@
     margin-bottom: 10px;
     font-weight: 500;
   }
-  form input[type=text], form input:not([type]), form select, form textarea {
+  form input[type=text], form input[type=number], form input:not([type]), form select, form textarea {
     display: block;
     width: 100%;
     margin-top: 4px;
@@ -316,6 +317,7 @@
           <select id="fType">
             <option value="func">func（Go 函数）</option>
             <option value="http">http（HTTP 请求）</option>
+            <option value="shell">shell（Shell 命令）</option>
           </select>
         </label>
         <label>Cron 表达式<input id="fSchedule" placeholder="*/10 * * * * *"></label>
@@ -346,6 +348,14 @@
         </div>
         <label>请求体（可选）<textarea id="fBody" rows="2" placeholder='{"from":"agcron"}'></textarea></label>
         <label>请求头（JSON，可选）<textarea id="fHeaders" rows="2" placeholder='{"Authorization": "Bearer xxx"}'></textarea></label>
+      </div>
+      <div id="shellGroup" class="hidden">
+        <label>Shell 命令（通过 /bin/sh -c 执行，支持管道、重定向）<textarea id="fCmd" rows="3" placeholder='例如: df -h | tail -1'></textarea></label>
+        <div class="grid2">
+          <label>工作目录（可选）<input id="fWorkdir" placeholder="如 /tmp，留空使用进程当前目录"></label>
+          <label>超时（秒，可选）<input id="fTimeout" type="number" min="0" placeholder="如 30，0 表示不超时"></label>
+        </div>
+        <label>环境变量（JSON，可选）<textarea id="fEnv" rows="2" placeholder='{"FOO": "bar"}'></textarea></label>
       </div>
       <div class="modal-foot">
         <button type="button" class="btn" id="cancelBtn">取消</button>
@@ -443,6 +453,9 @@ function typeCell(j) {
   if (j.type === 'http') {
     const m = (j.http && j.http.method) || 'POST';
     return badge('http', 'HTTP') + ' <span class="muted">' + esc(m + ' ' + trunc((j.http && j.http.url) || '', 26)) + '</span>';
+  }
+  if (j.type === 'shell') {
+    return badge('shell', 'SHELL') + ' <span class="muted">' + esc(trunc((j.shell && j.shell.command) || '', 26)) + '</span>';
   }
   return badge('none', j.type || '?');
 }
@@ -551,6 +564,7 @@ function syncType() {
   const t = $('#fType').value;
   $('#funcGroup').classList.toggle('hidden', t !== 'func');
   $('#httpGroup').classList.toggle('hidden', t !== 'http');
+  $('#shellGroup').classList.toggle('hidden', t !== 'shell');
 }
 
 function openModal(job) {
@@ -570,6 +584,11 @@ function openModal(job) {
   $('#fUrl').value = h.url || '';
   $('#fBody').value = h.body || '';
   $('#fHeaders').value = h.headers && Object.keys(h.headers).length ? JSON.stringify(h.headers, null, 2) : '';
+  const s = (job && job.shell) || {};
+  $('#fCmd').value = s.command || '';
+  $('#fWorkdir').value = s.workingDir || '';
+  $('#fTimeout').value = s.timeout > 0 ? s.timeout : '';
+  $('#fEnv').value = s.env && Object.keys(s.env).length ? JSON.stringify(s.env, null, 2) : '';
   syncType();
   loadFuncList();
   $('#modal').classList.remove('hidden');
@@ -607,7 +626,7 @@ function jobFromForm() {
     if (p) {
       try { job.funcParam = JSON.parse(p); } catch (e) { throw new Error('函数参数不是合法 JSON'); }
     }
-  } else {
+  } else if (type === 'http') {
     const url = $('#fUrl').value.trim();
     if (!url) throw new Error('http 任务需要填写 URL');
     const headers = {};
@@ -616,6 +635,21 @@ function jobFromForm() {
       try { Object.assign(headers, JSON.parse(h)); } catch (e) { throw new Error('请求头不是合法 JSON'); }
     }
     job.http = { method: $('#fMethod').value, url: url, body: $('#fBody').value, headers: headers };
+  } else if (type === 'shell') {
+    const cmd = $('#fCmd').value.trim();
+    if (!cmd) throw new Error('shell 任务需要填写命令');
+    const env = {};
+    const ev = $('#fEnv').value.trim();
+    if (ev) {
+      try { Object.assign(env, JSON.parse(ev)); } catch (e) { throw new Error('环境变量不是合法 JSON'); }
+    }
+    const timeout = parseInt($('#fTimeout').value, 10);
+    job.shell = {
+      command: cmd,
+      workingDir: $('#fWorkdir').value.trim(),
+      timeout: isNaN(timeout) ? 0 : timeout,
+      env: env
+    };
   }
   return job;
 }

@@ -60,8 +60,9 @@ type ExecutionRecord struct {
 type JobType string
 
 const (
-	JobTypeFunc JobType = "func"
-	JobTypeHTTP JobType = "http"
+	JobTypeFunc  JobType = "func"
+	JobTypeHTTP  JobType = "http"
+	JobTypeShell JobType = "shell"
 )
 
 type HTTPConfig struct {
@@ -71,18 +72,29 @@ type HTTPConfig struct {
 	Headers map[string]string `json:"headers,omitempty"` // custom request headers
 }
 
+// ShellConfig configures a shell-command job (Type == "shell"). The command is
+// executed through the system shell ("/bin/sh -c"), so pipes, redirection and
+// environment variable expansion all work as expected.
+type ShellConfig struct {
+	Command    string            `json:"command"`              // the shell command to run, e.g. `df -h | tail -1`
+	WorkingDir string            `json:"workingDir,omitempty"` // optional working directory; empty uses the process CWD
+	Timeout    int               `json:"timeout,omitempty"`    // optional timeout in seconds; <=0 means no timeout
+	Env        map[string]string `json:"env,omitempty"`        // optional extra environment variables
+}
+
 // JobDef is the shared, cluster-wide definition of a scheduled job.
 // It lives in the store so every instance converges to the same set.
 type JobDef struct {
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`                // task name
-	Type        JobType    `json:"type"`                // "func" or "http"
-	Schedule    string     `json:"schedule"`            // cron expression
-	WithSeconds bool       `json:"withSeconds"`         // true => 6-field cron (with seconds)
-	Enabled     bool       `json:"enabled"`             //
-	Func        string     `json:"func,omitempty"`      // used when Type == "func"
-	FuncParam   Map        `json:"funcParam,omitempty"` // per-job params passed to the func task
-	HTTP        HTTPConfig `json:"http"`                // used when Type == "http"
+	ID          string       `json:"id"`
+	Name        string       `json:"name"`                // task name
+	Type        JobType      `json:"type"`                // "func", "http" or "shell"
+	Schedule    string       `json:"schedule"`            // cron expression
+	WithSeconds bool         `json:"withSeconds"`         // true => 6-field cron (with seconds)
+	Enabled     bool         `json:"enabled"`             //
+	Func        string       `json:"func,omitempty"`      // used when Type == "func"
+	FuncParam   Map          `json:"funcParam,omitempty"` // per-job params passed to the func task
+	HTTP        HTTPConfig   `json:"http"`                // used when Type == "http"
+	Shell       ShellConfig  `json:"shell"`               // used when Type == "shell"
 }
 
 // RedisStore is the default, Redis-backed implementation of Store.

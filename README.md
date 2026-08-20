@@ -7,9 +7,10 @@
 - **Leader 选举**：基于 Redis `SET NX` + 心跳续期的分布式锁，集群中只有一个实例执行任务，其余实例热备。
 - **共享任务存储**：任务定义存放在共享存储（默认 Redis Hash，可替换为 MySQL / 内存等），所有实例收敛到同一任务集。
 - **运行时热更新**：通过 Admin API 增删改任务或启停任务，一次写入即对全集群生效（调度器 reconciler 周期对齐）。
-- **两种任务类型**：
+- **三种任务类型**：
   - `func`：注册的 Go 函数任务。
   - `http`：对外发起 HTTP 请求任务。
+  - `shell`：在 Leader 实例上通过系统 Shell（`/bin/sh -c`）执行命令，支持管道 / 重定向 / 环境变量，可配置工作目录与超时。
 - **可插拔存储**：`jobstore.Store` 是接口，默认 Redis 实现，另含 MySQL 实现示例，可自行扩展。
 - **Admin HTTP 控制面**：查看状态 / 列出任务 / 创建 / 删除 / 启停任务。
 
@@ -28,7 +29,7 @@
 
 - **elector**：Redis 领导者选举，实现 gocron 的 `Elector` 接口。
 - **scheduler**：封装 gocron，内置 reconciler 轮询存储并增删改本地调度。
-- **executor**：执行任务（Go 函数或 HTTP）。
+- **executor**：执行任务（Go 函数、HTTP 或 Shell 命令）。
 - **jobstore**：任务定义持久化接口与 Redis / MySQL 实现。
 - **admin**：轻量 HTTP 控制面。
 
@@ -129,12 +130,13 @@ func main() {
 type JobDef struct {
 	ID          string          // 任务唯一 ID
 	Name        string          // 展示名
-	Type        JobType         // "func" 或 "http"
+	Type        JobType         // "func" / "http" / "shell"
 	Schedule    string          // cron 表达式
 	WithSeconds bool            // true => 6 段 cron（含秒），false => 5 段
 	Enabled     bool            // 是否启用
 	Func        string          // Type=="func" 时对应的函数名
 	HTTP        HTTPConfig      // Type=="http" 时的请求配置
+	Shell       ShellConfig     // Type=="shell" 时的命令配置
 }
 ```
 
@@ -165,6 +167,27 @@ jobstore.JobDef{
 }
 ```
 
+### shell 类型示例
+
+命令通过 `/bin/sh -c` 执行，因此支持管道、重定向与环境变量展开；超时后命令会被强制终止并记为失败：
+
+```go
+jobstore.JobDef{
+	ID: "job-shell", Name: "disk-usage",
+	Type: jobstore.JobTypeShell,
+	Schedule: "0 0 * * *", WithSeconds: false,
+	Enabled: true,
+	Shell: jobstore.ShellConfig{
+		Command:    `df -h | tail -1`,
+		WorkingDir: "/tmp",                  // 可选，工作目录
+		Timeout:    30,                      // 可选，超时秒数，<=0 表示不超时
+		Env:        map[string]string{"FOO": "bar"}, // 可选，额外环境变量
+	},
+}
+```
+
+> 注意：shell 任务只在 Leader 实例上执行，命令的运行环境与该进程一致。
+
 ## 执行结果记录
 
 库会自动记录每个任务的**最后一次**执行结果（仅 Leader 实例执行时写入），可通过 Admin API 查询，便于监控任务健康状况。
@@ -180,8 +203,8 @@ type ExecutionRecord struct {
 	FinishedAt time.Time
 	Success    bool
 	Error      string    // 失败原因，成功时为空
-	HTTPStatus int       // HTTP 任务的状态码；func 任务为 0
-	HTTPBody   string    // HTTP 任务的响应体（已截断）
+	HTTPStatus int       // HTTP 任务的状态码；func / shell 任务为 0
+	HTTPBody   string    // HTTP 任务的响应体 / shell 任务的命令输出（已截断）
 }
 ```
 
@@ -352,7 +375,7 @@ INSTANCE_ID=cron-a REDIS_ADDR=localhost:6379 go run .
 1. 每个实例启动时创建一个 `RedisElector`，通过 `SET NX` 竞选领导权并周期性续期；只有持有锁的实例为 Leader。
 2. `Scheduler` 内置 reconciler，按 `Reconcile` 间隔从共享存储 `List` 全部任务，并与本地 gocron 收敛（新增 / 更新 / 删除）。
 3. gocron 通过 `Elector` 接口判断当前是否 Leader，仅在 Leader 上真正触发 `Executor.Run`。
-4. `Executor.Run` 重新从存储读取任务定义（因此启停立即生效），按 `Type` 执行 Go 函数或发起 HTTP 请求。
+4. `Executor.Run` 重新从存储读取任务定义（因此启停立即生效），按 `Type` 执行 Go 函数、HTTP 请求或 Shell 命令。
 5. 任意实例通过 Admin API 写入存储后，所有实例在下一个 reconciler 周期对齐，实现集群一致。
 
 ## 自定义 Logger

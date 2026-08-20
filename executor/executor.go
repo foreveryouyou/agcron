@@ -1,5 +1,6 @@
 // Package executor runs scheduled jobs. A job is either a Go function
-// (registered via a FuncRegistry) or an outbound HTTP request.
+// (registered via a FuncRegistry), an outbound HTTP request, or a shell
+// command executed on the leader instance.
 package executor
 
 import (
@@ -8,7 +9,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -135,6 +139,13 @@ func (e *Executor) run(ctx context.Context, jobID string, force bool) {
 			return
 		}
 		e.finish(rec, d, true, nil, status, body)
+	case jobstore.JobTypeShell:
+		res, err := e.doShell(ctx, d)
+		if err != nil {
+			e.finish(rec, d, false, err, 0, res)
+			return
+		}
+		e.finish(rec, d, true, nil, 0, res)
 	default:
 		e.log.Errorf("[exec %s] unknown job type %q", e.instID, d.Type)
 		e.finish(rec, d, false, fmt.Errorf("unknown job type %q", d.Type), 0, "")
@@ -187,6 +198,44 @@ func (e *Executor) doHTTP(ctx context.Context, d jobstore.JobDef) (status int, b
 	body = string(b)
 	e.log.Infof("[exec %s] http %s -> %d %s", e.instID, d.HTTP.URL, resp.StatusCode, truncate(body))
 	return resp.StatusCode, body, nil
+}
+
+// doShell runs a shell job's command via the system shell (/bin/sh -c) on the
+// leader instance, so pipelines, redirection and environment expansion behave
+// like an interactive shell. Command output (stdout+stderr, combined) becomes
+// the execution record's result; a non-zero exit code or timeout marks the run
+// as failed.
+func (e *Executor) doShell(ctx context.Context, d jobstore.JobDef) (result string, err error) {
+	cfg := d.Shell
+	if cfg.Command == "" {
+		return "", fmt.Errorf("shell command is empty")
+	}
+	runCtx := ctx
+	var cancel context.CancelFunc
+	if cfg.Timeout > 0 {
+		runCtx, cancel = context.WithTimeout(ctx, time.Duration(cfg.Timeout)*time.Second)
+		defer cancel()
+	}
+	cmd := exec.CommandContext(runCtx, "/bin/sh", "-c", cfg.Command)
+	if cfg.WorkingDir != "" {
+		cmd.Dir = cfg.WorkingDir
+	}
+	if len(cfg.Env) > 0 {
+		cmd.Env = os.Environ()
+		for k, v := range cfg.Env {
+			cmd.Env = append(cmd.Env, k+"="+v)
+		}
+	}
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	if err := cmd.Run(); err != nil {
+		e.log.Errorf("[exec %s] shell job %q error: %v", e.instID, d.Name, err)
+		return strings.TrimSpace(buf.String()), err
+	}
+	out := strings.TrimSpace(buf.String())
+	e.log.Infof("[exec %s] shell job %q done: %s", e.instID, d.Name, truncate(out))
+	return out, nil
 }
 
 func truncate(s string) string {

@@ -49,6 +49,8 @@ func Open(dsn string, table string) (*Store, error) {
 var _ jobstore.Store = (*Store)(nil)
 
 // DDL is the recommended table schema for job definitions.
+// For tables created by an older version (before the shell column existed),
+// run: ALTER TABLE cron_jobs ADD COLUMN shell JSON NULL AFTER http;
 const DDL = `
 CREATE TABLE IF NOT EXISTS cron_jobs (
     id           VARCHAR(128) NOT NULL,
@@ -59,6 +61,7 @@ CREATE TABLE IF NOT EXISTS cron_jobs (
     enabled      TINYINT(1)   NOT NULL DEFAULT 1,
     func_name    VARCHAR(255) NOT NULL DEFAULT '',
     http         JSON         NULL,
+    shell        JSON         NULL,
     PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `
@@ -93,7 +96,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 
 func (s *Store) List(ctx context.Context) (map[string]jobstore.JobDef, error) {
 	rows, err := s.db.QueryContext(ctx,
-		"SELECT id, name, type, schedule, with_seconds, enabled, func_name, http FROM "+s.table)
+		"SELECT id, name, type, schedule, with_seconds, enabled, func_name, http, shell FROM "+s.table)
 	if err != nil {
 		return nil, fmt.Errorf("mysqlstore: list: %w", err)
 	}
@@ -115,7 +118,7 @@ func (s *Store) List(ctx context.Context) (map[string]jobstore.JobDef, error) {
 
 func (s *Store) Get(ctx context.Context, id string) (jobstore.JobDef, bool, error) {
 	row := s.db.QueryRowContext(ctx,
-		"SELECT id, name, type, schedule, with_seconds, enabled, func_name, http FROM "+s.table+" WHERE id = ?", id)
+		"SELECT id, name, type, schedule, with_seconds, enabled, func_name, http, shell FROM "+s.table+" WHERE id = ?", id)
 
 	var d jobstore.JobDef
 	err := scanJobRow(row, &d)
@@ -133,16 +136,20 @@ func (s *Store) Put(ctx context.Context, d jobstore.JobDef) error {
 	if err != nil {
 		return fmt.Errorf("mysqlstore: marshal http: %w", err)
 	}
+	shellRaw, err := json.Marshal(d.Shell)
+	if err != nil {
+		return fmt.Errorf("mysqlstore: marshal shell: %w", err)
+	}
 
 	_, err = s.db.ExecContext(ctx,
 		`INSERT INTO `+s.table+`
-		 (id, name, type, schedule, with_seconds, enabled, func_name, http)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		 (id, name, type, schedule, with_seconds, enabled, func_name, http, shell)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON DUPLICATE KEY UPDATE
 		 name = VALUES(name), type = VALUES(type), schedule = VALUES(schedule),
 		 with_seconds = VALUES(with_seconds), enabled = VALUES(enabled),
-		 func_name = VALUES(func_name), http = VALUES(http)`,
-		d.ID, d.Name, string(d.Type), d.Schedule, d.WithSeconds, d.Enabled, d.Func, httpRaw)
+		 func_name = VALUES(func_name), http = VALUES(http), shell = VALUES(shell)`,
+		d.ID, d.Name, string(d.Type), d.Schedule, d.WithSeconds, d.Enabled, d.Func, httpRaw, shellRaw)
 	if err != nil {
 		return fmt.Errorf("mysqlstore: put %q: %w", d.ID, err)
 	}
@@ -222,9 +229,10 @@ func scanJobRow(rs rowScanner, d *jobstore.JobDef) error {
 		typ      string
 		funcName string
 		httpRaw  []byte
+		shellRaw []byte
 	)
 
-	err := rs.Scan(&d.ID, &d.Name, &typ, &d.Schedule, &d.WithSeconds, &d.Enabled, &funcName, &httpRaw)
+	err := rs.Scan(&d.ID, &d.Name, &typ, &d.Schedule, &d.WithSeconds, &d.Enabled, &funcName, &httpRaw, &shellRaw)
 	if err != nil {
 		return err // callers translate sql.ErrNoRows into ok=false
 	}
@@ -233,10 +241,16 @@ func scanJobRow(rs rowScanner, d *jobstore.JobDef) error {
 	d.Func = funcName
 
 	// A NULL JSON column surfaces as an empty byte slice; JSON `null` unmarshals
-	// to the zero value of HTTPConfig. Either way we end up with a sane default.
+	// to the zero value of HTTPConfig/ShellConfig. Either way we end up with a
+	// sane default.
 	if len(httpRaw) > 0 {
 		if err := json.Unmarshal(httpRaw, &d.HTTP); err != nil {
 			return fmt.Errorf("mysqlstore: unmarshal http: %w", err)
+		}
+	}
+	if len(shellRaw) > 0 {
+		if err := json.Unmarshal(shellRaw, &d.Shell); err != nil {
+			return fmt.Errorf("mysqlstore: unmarshal shell: %w", err)
 		}
 	}
 	return nil
