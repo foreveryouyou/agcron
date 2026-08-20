@@ -671,7 +671,10 @@ $('#jobForm').addEventListener('submit', async ev => {
   let job;
   try { job = jobFromForm(); } catch (e) { toast(e.message, 'error'); return; }
   try {
-    const saved = await api('api/jobs', 'POST', job);
+    // 编辑走 PUT /api/jobs/{id}（任务必须已存在），新增走 POST /api/jobs（id 冲突会 409）
+    const saved = editingId
+      ? await api('api/jobs/' + encodeURIComponent(editingId), 'PUT', job)
+      : await api('api/jobs', 'POST', job);
     closeModal();
     toast('任务「' + (saved.name || saved.id) + '」已保存', 'success');
     refresh();

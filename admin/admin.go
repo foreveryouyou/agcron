@@ -170,6 +170,13 @@ func (a *API) jobs(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 400, map[string]string{"error": "id required"})
 			return
 		}
+		if _, ok, err := a.store.Get(r.Context(), d.ID); err != nil {
+			writeJSON(w, 500, map[string]string{"error": err.Error()})
+			return
+		} else if ok {
+			writeJSON(w, 409, map[string]string{"error": "job id already exists: " + d.ID})
+			return
+		}
 		if err := a.store.Put(r.Context(), d); err != nil {
 			writeJSON(w, 500, map[string]string{"error": err.Error()})
 			return
@@ -202,6 +209,29 @@ func (a *API) jobByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, 200, map[string]string{"ok": "true", "job_id": jobID, "triggered_on": a.instID})
+	case r.Method == http.MethodPut:
+		// update an existing job: 409-free, but the job must already exist
+		var d jobstore.JobDef
+		if err := json.NewDecoder(r.Body).Decode(&d); err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		if d.ID != jobID {
+			writeJSON(w, 400, map[string]string{"error": "id mismatch: path id and body id differ"})
+			return
+		}
+		if _, ok, err := a.store.Get(r.Context(), jobID); err != nil {
+			writeJSON(w, 500, map[string]string{"error": err.Error()})
+			return
+		} else if !ok {
+			writeJSON(w, 404, map[string]string{"error": "job not found"})
+			return
+		}
+		if err := a.store.Put(r.Context(), d); err != nil {
+			writeJSON(w, 500, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, d)
 	case r.Method == http.MethodDelete:
 		if err := a.store.Delete(r.Context(), jobID); err != nil {
 			writeJSON(w, 500, map[string]string{"error": err.Error()})
