@@ -128,7 +128,7 @@ func (a *API) status(w http.ResponseWriter, r *http.Request) {
 // echo is a self-contained HTTP target the http-type demo job calls.
 func (a *API) echo(w http.ResponseWriter, r *http.Request) {
 	b, _ := io.ReadAll(r.Body)
-	a.log.Infof("[echo %s] %s %s body=%s", a.instID, r.Method, r.URL.Path, string(b))
+	a.log.Debugf("[echo %s] %s %s body=%s", a.instID, r.Method, r.URL.Path, string(b))
 	w.WriteHeader(200)
 	_, _ = w.Write([]byte(`{"ok":true}`))
 }

@@ -110,11 +110,11 @@ func (e *Executor) run(ctx context.Context, jobID string, force bool) {
 	}
 	rec.JobName = d.Name
 	if !force && !d.Enabled {
-		e.log.Infof("[exec %s] job %q disabled, skip", e.instID, d.Name)
+		e.log.Debugf("[exec %s] job %q disabled, skip", e.instID, d.Name)
 		return // no execution record: a paused job must not surface as an error
 	}
 
-	e.log.Infof("[exec %s] >>> running job %q (type=%s)", e.instID, d.Name, d.Type)
+	e.log.Debugf("[exec %s] >>> running job %q (type=%s)", e.instID, d.Name, d.Type)
 	switch d.Type {
 	case jobstore.JobTypeFunc:
 		e.mu.RLock()
@@ -147,7 +147,7 @@ func (e *Executor) run(ctx context.Context, jobID string, force bool) {
 		}
 		e.finish(rec, d, true, nil, 0, res)
 	default:
-		e.log.Errorf("[exec %s] unknown job type %q", e.instID, d.Type)
+		e.log.Warnf("[exec %s] unknown job type %q", e.instID, d.Type)
 		e.finish(rec, d, false, fmt.Errorf("unknown job type %q", d.Type), 0, "")
 	}
 }
@@ -196,7 +196,7 @@ func (e *Executor) doHTTP(ctx context.Context, d jobstore.JobDef) (status int, b
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
 	body = string(b)
-	e.log.Infof("[exec %s] http %s -> %d %s", e.instID, d.HTTP.URL, resp.StatusCode, truncate(body))
+	e.log.Debugf("[exec %s] http %s -> %d %s", e.instID, d.HTTP.URL, resp.StatusCode, truncate(body))
 	return resp.StatusCode, body, nil
 }
 
@@ -234,7 +234,7 @@ func (e *Executor) doShell(ctx context.Context, d jobstore.JobDef) (result strin
 		return strings.TrimSpace(buf.String()), err
 	}
 	out := strings.TrimSpace(buf.String())
-	e.log.Infof("[exec %s] shell job %q done: %s", e.instID, d.Name, truncate(out))
+	e.log.Debugf("[exec %s] shell job %q done: %s", e.instID, d.Name, truncate(out))
 	return out, nil
 }
 
