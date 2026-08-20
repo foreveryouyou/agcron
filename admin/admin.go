@@ -13,8 +13,8 @@ import (
 
 	"github.com/foreveryouyou/agcron/elector"
 	"github.com/foreveryouyou/agcron/jobstore"
-	"github.com/foreveryouyou/agcron/scheduler"
 	"github.com/foreveryouyou/agcron/logx"
+	"github.com/foreveryouyou/agcron/scheduler"
 )
 
 // API exposes a tiny control surface so you can modify jobs at runtime and
@@ -97,11 +97,17 @@ func (a *API) Mux() http.Handler {
 	mux.HandleFunc(p+"/api/funcs", a.funcsHandler)
 	mux.HandleFunc(p+"/api/jobs", a.jobs)
 	mux.HandleFunc(p+"/api/jobs/", a.jobByID)
-	// task management UI (embedded, no external deps)
-	ui := http.StripPrefix(p, ui())
+	// task management UI: index.html is rendered via html/template with the API
+	// prefix injected, so the page's /api/* requests always resolve correctly
+	// regardless of the mount path.
+	ui := a.ui()
 	mux.Handle(p+"/", ui)
 	if p != "" {
-		mux.Handle(p, http.RedirectHandler(p+"/", http.StatusMovedPermanently))
+		// 直接渲染 UI 首页,而不是 301 重定向到 p+"/"。
+		// 部分 Web 框架(如 GoFrame)在路由匹配前会剥离 URL.Path 末尾的 "/",
+		// 使 "/agcron/" 被还原成 "/agcron" 后再次命中 301,造成无限重定向
+		// (ERR_TOO_MANY_REDIRECTS)。模板渲染不依赖请求路径,直接复用 ui 即可。
+		mux.HandleFunc(p, ui.ServeHTTP)
 	}
 	return mux
 }

@@ -2,20 +2,26 @@ package admin
 
 import (
 	"embed"
-	"io/fs"
+	"html/template"
 	"net/http"
 )
 
 //go:embed index.html
 var uiFiles embed.FS
 
-// ui serves the embedded single-page task management UI. The UI talks to the
-// same /api/* endpoints exposed by the API, so a browser hitting the admin
-// root can create, edit, pause/resume, run and delete jobs at runtime.
-func ui() http.Handler {
-	sub, err := fs.Sub(uiFiles, ".")
-	if err != nil {
-		panic(err) // cannot happen: index.html is embedded at the package root
-	}
-	return http.FileServer(http.FS(sub))
+// indexTpl renders the embedded single-page task management UI with the API
+// URL prefix injected, so the browser always calls the correct /api/*
+// endpoints no matter how the admin is mounted (with or without a trailing
+// slash, at any prefix depth).
+var indexTpl = template.Must(template.ParseFS(uiFiles, "index.html"))
+
+// ui renders the task management UI. The API prefix comes from template data
+// rather than the request path, so "/agcron", "/agcron/" and deeper mounts all
+// behave identically — the bare prefix works without a redirect and without
+// breaking the relative /api/* requests made by the page.
+func (a *API) ui() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_ = indexTpl.Execute(w, map[string]string{"APIPrefix": a.prefix})
+	})
 }

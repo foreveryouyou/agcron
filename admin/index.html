@@ -28,36 +28,9 @@
     background: var(--bg);
     color: var(--text);
   }
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 28px;
-    background: var(--card);
-    border-bottom: 1px solid var(--border);
-    position: sticky;
-    top: 0;
-    z-index: 10;
-  }
-  header h1 {
-    margin: 0;
-    font-size: 18px;
-    letter-spacing: 0.5px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  header h1 .logo {
-    display: inline-block;
-    width: 22px; height: 22px;
-    border-radius: 6px;
-    background: linear-gradient(135deg, var(--primary), #8b5cf6);
-    color: #fff;
-    font-size: 12px;
-    font-weight: 700;
-    text-align: center;
-    line-height: 22px;
-  }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 28px; background: var(--card); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
+  header h1 { margin: 0; font-size: 18px; letter-spacing: 0.5px; display: flex; align-items: center; gap: 8px; }
+  header h1 .logo { display: inline-block; width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg, var(--primary), #8b5cf6); color: #fff; font-size: 12px; font-weight: 700; text-align: center; line-height: 22px; }
   .meta { display: flex; gap: 8px; }
   .chip {
     font-size: 12px;
@@ -93,11 +66,7 @@
     transition: all .15s;
   }
   .btn:hover { border-color: #c9d3e6; background: #f8fafd; }
-  .btn.primary {
-    background: var(--primary);
-    border-color: var(--primary);
-    color: #fff;
-  }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
   .btn.primary:hover { background: var(--primary-dark); }
   .btn.danger { color: var(--red); }
   .btn.danger:hover { border-color: var(--red); background: #fdf0f0; }
@@ -135,15 +104,7 @@
   .job-name { font-weight: 600; }
   .job-id { font-size: 12px; color: var(--muted); font-family: ui-monospace, Menlo, Consolas, monospace; }
   .muted { color: var(--muted); font-size: 12px; }
-  .tag {
-    display: inline-block;
-    margin-left: 6px;
-    font-size: 11px;
-    color: var(--muted);
-    background: #eef1f8;
-    border-radius: 4px;
-    padding: 0 5px;
-  }
+  .tag { display: inline-block; margin-left: 6px; font-size: 11px; color: var(--muted); background: #eef1f8; border-radius: 4px; padding: 0 5px; }
   .badge {
     display: inline-block;
     font-size: 11px;
@@ -299,7 +260,7 @@
   }
 </style>
 </head>
-<body>
+<body data-api-prefix="{{.APIPrefix}}">
 <header>
   <h1><span class="logo">AG</span>agcron 任务管理</h1>
   <div class="meta">
@@ -397,6 +358,9 @@
 <div id="toasts"></div>
 
 <script>
+// API 前缀由服务端通过 html/template 注入到 body 的 data-api-prefix 属性 (见 ui.go)。
+// 页面无论挂在带/不带尾斜杠的路径下(如 "/api/agcron" 与 "/api/agcron/"),接口请求都能拼出正确的 /api/* 地址,不会因相对路径解析错位而 404。
+const API_PREFIX = document.body.dataset.apiPrefix;
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -420,7 +384,7 @@ async function api(path, method = 'GET', body) {
     opts.headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
   }
-  const res = await fetch(path, opts);
+  const res = await fetch(API_PREFIX + '/' + path, opts);
   let data = null;
   try { data = await res.json(); } catch (e) { /* non-JSON response */ }
   if (!res.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
